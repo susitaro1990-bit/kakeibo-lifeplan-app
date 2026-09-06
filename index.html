@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>夫婦家計簿 &amp; ライフプラン</title>
+<style>
+  :root{
+    --bg:#f4f6f5;
+    --card:#ffffff;
+    --border:#e2e6e4;
+    --text:#1f2a24;
+    --text-dim:#6b7770;
+    --accent:#3f7a5c;
+    --accent-dim:#eaf3ee;
+    --income:#3f7a5c;
+    --expense:#c1553e;
+    --self-color:#3f7a5c;
+    --spouse-color:#a9762c;
+    --radius:14px;
+    --shadow:0 1px 3px rgba(20,30,25,0.06), 0 1px 2px rgba(20,30,25,0.04);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Hiragino Sans","Yu Gothic","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:70px;
+  }
+  .app{
+    max-width:640px;
+    margin:0 auto;
+    padding:0 14px;
+  }
+  header.topbar{
+    position:sticky; top:0; z-index:20;
+    background:rgba(244,246,245,0.92);
+    backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--border);
+  }
+  .topbar-inner{
+    max-width:640px;margin:0 auto;padding:12px 14px 8px;
+  }
+  .title-row{
+    display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;
+  }
+  .title-row h1{
+    font-size:16px;font-weight:700;margin:0;letter-spacing:.02em;
+  }
+  .brand{display:flex;align-items:center;gap:9px;}
+  .brand-icon{
+    width:32px;height:32px;flex-shrink:0;color:var(--accent);
+    filter:drop-shadow(0 1px 1px rgba(20,30,25,0.15));
+    transition:color .3s;
+  }
+  .brand-text h1{
+    font-size:17px;font-weight:800;margin:0;letter-spacing:.02em;
+    font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    color:var(--text);line-height:1.15;
+  }
+  .brand-text .brand-sub{
+    font-size:9px;letter-spacing:.16em;color:var(--text-dim);
+    text-transform:uppercase;font-weight:700;margin-top:1px;
+  }
+  .icon-group{display:flex;gap:6px;}
+  .icon-btn{
+    width:36px;height:36px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--card);border:1px solid var(--border);border-radius:10px;
+    color:var(--text-dim);cursor:pointer;
+    box-shadow:var(--shadow);
+    transition:background .15s, color .15s, border-color .15s;
+  }
+  .icon-btn svg{width:18px;height:18px;}
+  .icon-btn:hover{background:var(--accent-dim);color:var(--accent);border-color:var(--accent);}
+
+  .person-select{
+    display:flex;gap:6px;background:var(--card);border:1px solid var(--border);
+    border-radius:10px;padding:3px;
+  }
+  .person-select button{
+    flex:1;border:none;background:none;padding:8px 6px;border-radius:8px;
+    font-size:13px;font-weight:600;color:var(--text-dim);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .person-select button.active{
+    background:var(--accent-dim);color:var(--accent);
+  }
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+
+  nav.tabs{
+    display:flex;gap:4px;margin-top:10px;
+  }
+  nav.tabs button{
+    flex:1;padding:10px 4px;background:none;border:none;
+    font-size:13px;font-weight:600;color:var(--text-dim);cursor:pointer;
+    border-bottom:2px solid transparent;
+  }
+  nav.tabs button.active{
+    color:var(--accent);border-bottom-color:var(--accent);
+  }
+  nav.tabs button.disabled{
+    color:#bfc7c2;cursor:default;
+  }
+
+  main{padding:14px 0 30px;}
+  .card{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:16px; margin-bottom:14px;
+  }
+  .card h2{font-size:14px;margin:0 0 12px;color:var(--text);font-weight:700;}
+  .section-label{font-size:12px;color:var(--text-dim);margin-bottom:6px;font-weight:600;}
+
+  .view-toggle{
+    display:flex;gap:6px;margin-bottom:14px;
+  }
+  .view-toggle button{
+    flex:1;padding:9px 4px;border:1px solid var(--border);background:var(--card);
+    border-radius:10px;font-size:12.5px;font-weight:600;color:var(--text-dim);cursor:pointer;
+  }
+  .view-toggle button.active{
+    background:var(--accent);color:#fff;border-color:var(--accent);
+  }
+
+  .summary-grid{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;
+  }
+  .summary-box{
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:10px 8px;text-align:center;
+  }
+  .summary-box .label{font-size:11px;color:var(--text-dim);margin-bottom:4px;}
+  .summary-box .val{font-size:15px;font-weight:700;}
+  .val.income{color:var(--income);}
+  .val.expense{color:var(--expense);}
+  .val.balance.pos{color:var(--income);}
+  .val.balance.neg{color:var(--expense);}
+
+  form.entry-form{display:flex;flex-direction:column;gap:10px;}
+  .form-row{display:flex;gap:8px;}
+  .form-row > div{flex:1;}
+  label{display:block;font-size:11.5px;color:var(--text-dim);margin-bottom:4px;font-weight:600;}
+  input, select, textarea{
+    width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:9px;
+    font-size:14px;background:#fbfcfb;color:var(--text);font-family:inherit;
+  }
+  input:focus, select:focus, textarea:focus{outline:2px solid var(--accent-dim);border-color:var(--accent);}
+  .type-toggle{display:flex;gap:6px;}
+  .type-toggle button{
+    flex:1;padding:9px;border:1px solid var(--border);border-radius:9px;background:#fbfcfb;
+    font-weight:700;font-size:13px;color:var(--text-dim);cursor:pointer;
+  }
+  .type-toggle button.active.expense{background:#fbeae6;border-color:var(--expense);color:var(--expense);}
+  .type-toggle button.active.income{background:#e9f3ee;border-color:var(--income);color:var(--income);}
+
+  .submit-btn{
+    background:var(--accent);color:#fff;border:none;border-radius:10px;
+    padding:11px;font-size:14.5px;font-weight:700;cursor:pointer;margin-top:2px;
+  }
+  .submit-btn:hover{filter:brightness(1.05);}
+  .cancel-btn{
+    background:none;border:1px solid var(--border);color:var(--text-dim);
+    border-radius:10px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;
+  }
+
+  /* chart */
+  .chart-wrap{overflow-x:auto;}
+  svg.chart{display:block;min-width:100%;}
+  .bar{cursor:pointer;}
+  .bar:hover{opacity:0.8;}
+  .axis-label{font-size:10px;fill:var(--text-dim);}
+  .legend{display:flex;gap:14px;font-size:11.5px;color:var(--text-dim);margin-top:6px;justify-content:center;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
+
+  .month-header{
+    display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;
+  }
+  .month-header .m-label{font-weight:700;font-size:14px;}
+  .month-header button{
+    background:none;border:none;color:var(--text-dim);font-size:12px;cursor:pointer;
+    text-decoration:underline;
+  }
+
+  .entry-list{display:flex;flex-direction:column;gap:6px;}
+  .entry-item{
+    display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);
+    border-radius:10px;background:#fbfcfb;
+  }
+  .entry-item .who-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .entry-item .main{flex:1;min-width:0;}
+  .entry-item .cat{font-size:13px;font-weight:700;}
+  .entry-item .meta{font-size:11.5px;color:var(--text-dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .entry-item .amt{font-size:14px;font-weight:700;white-space:nowrap;}
+  .entry-item .amt.income{color:var(--income);}
+  .entry-item .amt.expense{color:var(--expense);}
+  .entry-item .del{
+    background:none;border:none;color:#c8ccc9;font-size:16px;cursor:pointer;padding:2px 4px;
+  }
+  .entry-item .del:hover{color:var(--expense);}
+  .empty-note{color:var(--text-dim);font-size:13px;text-align:center;padding:20px 0;}
+
+  .placeholder{
+    text-align:center;padding:60px 20px;color:var(--text-dim);
+  }
+  .placeholder .big{font-size:28px;margin-bottom:10px;}
+  .placeholder h3{color:var(--text);margin:0 0 6px;font-size:15px;}
+  .placeholder p{font-size:13px;line-height:1.6;margin:0;}
+
+  /* modal */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(20,30,25,0.4);z-index:100;
+    display:flex;align-items:flex-end;justify-content:center;
+  }
+  @media (min-width:640px){
+    .modal-overlay{align-items:center;}
+  }
+  .modal{
+    background:#fff;width:100%;max-width:520px;border-radius:16px 16px 0 0;
+    padding:18px;max-height:85vh;overflow-y:auto;
+  }
+  @media (min-width:640px){
+    .modal{border-radius:16px;}
+  }
+  .modal h3{margin:0 0 14px;font-size:15px;}
+  .modal-close-row{display:flex;justify-content:flex-end;margin-top:14px;gap:8px;}
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+  .chip{
+    display:flex;align-items:center;gap:6px;background:var(--accent-dim);color:var(--accent);
+    padding:6px 10px;border-radius:20px;font-size:12.5px;font-weight:600;
+  }
+  .chip button{background:none;border:none;color:var(--accent);cursor:pointer;font-size:13px;line-height:1;padding:0;}
+  .add-chip-row{display:flex;gap:6px;}
+  .add-chip-row input{flex:1;}
+  .add-chip-row button{
+    background:var(--accent);color:#fff;border:none;border-radius:9px;padding:0 14px;font-weight:700;cursor:pointer;
+  }
+  .field-group{margin-bottom:16px;}
+  .field-group h4{font-size:12.5px;color:var(--text-dim);margin:0 0 8px;font-weight:700;}
+  .name-edit-row{display:flex;gap:8px;margin-bottom:8px;align-items:center;}
+  .name-edit-row .dot{width:10px;height:10px;}
+  .sync-status{font-size:11.5px;color:var(--text-dim);margin-top:10px;line-height:1.6;}
+  .sync-status code{background:var(--accent-dim);padding:1px 5px;border-radius:5px;}
+  .toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:#1f2a24;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;
+    z-index:200;opacity:0;pointer-events:none;transition:opacity .25s;
+  }
+  .toast.show{opacity:1;}
+
+  .fixed-badge{
+    display:inline-block;font-size:10px;font-weight:700;color:var(--accent);
+    background:var(--accent-dim);padding:1px 6px;border-radius:8px;margin-left:4px;vertical-align:middle;
+  }
+  .entry-item .edit-btn{
+    background:none;border:none;color:#b7bdb9;font-size:14px;cursor:pointer;padding:2px 4px;
+  }
+  .entry-item .edit-btn:hover{color:var(--accent);}
+  .fixed-list{display:flex;flex-direction:column;gap:6px;margin-bottom:4px;}
+  .fixed-item{
+    display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);
+    border-radius:10px;background:#fbfcfb;
+  }
+  .fixed-item .main{flex:1;min-width:0;}
+  .fixed-item .cat{font-size:13px;font-weight:700;}
+  .fixed-item .meta{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
+  .fixed-item .amt{font-size:13.5px;font-weight:700;white-space:nowrap;}
+  .fixed-item .amt.income{color:var(--income);}
+  .fixed-item .amt.expense{color:var(--expense);}
+  .fixed-type{font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:4px;}
+  .fixed-type.expense{background:#fbeae6;color:var(--expense);}
+  .fixed-type.income{background:#e9f3ee;color:var(--income);}
+
+  .theme-row{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+  .theme-row-label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;min-width:76px;}
+  .swatch-row{display:flex;gap:7px;flex-wrap:wrap;align-items:center;}
+  .swatch{
+    width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;
+    box-shadow:0 0 0 1px rgba(20,30,25,0.08);
+  }
+  .swatch.selected{border-color:#fff;box-shadow:0 0 0 2px var(--text);}
+  .custom-color{
+    width:30px;height:26px;padding:0;border:1px solid var(--border);border-radius:8px;cursor:pointer;
+    background:none;
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="title-row">
+      <div class="brand">
+        <svg class="brand-icon" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="5" y="4" width="30" height="32" rx="4" fill="currentColor"/>
+          <rect x="5" y="4" width="8" height="32" rx="4" fill="#000" opacity="0.15"/>
+          <path d="M20 11c-5 0-9 4-9 9.5S15 30 20 30s9-4.5 9-9.5S25 11 20 11z" fill="#fff" opacity="0.94"/>
+          <path d="M20 12.5v16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.5"/>
+        </svg>
+        <div class="brand-text">
+          <h1>夫婦家計簿</h1>
+          <div class="brand-sub">Kakeibo Ledger</div>
+        </div>
+      </div>
+      <div class="icon-group">
+        <button class="icon-btn" id="btnFixed" title="固定費の管理">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="17 1 21 5 17 9"></polyline>
+            <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+            <polyline points="7 23 3 19 7 15"></polyline>
+            <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+          </svg>
+        </button>
+        <button class="icon-btn" id="btnSettings" title="設定">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="person-select" id="personSelect"></div>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="ledger">家計簿入力</button>
+      <button class="tab-btn disabled" disabled>月次評価<br><small style="font-weight:400;">(準備中)</small></button>
+      <button class="tab-btn disabled" disabled>ライフプラン<br><small style="font-weight:400;">(準備中)</small></button>
+    </nav>
+  </div>
+</header>
+
+<div class="app">
+<main id="mainArea"></main>
+</div>
+
+<div id="modalRoot"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   データレイヤー（将来 Google Apps Script に差し替え予定）
+   -----------------------------------------------------------
+   今はブラウザの localStorage を「台帳」として使い、
+   すべての更新は syncToGAS() 経由でも呼び出す形にしておく。
+   GAS_URL を設定すれば、そのまま実際のスプレッドシートに
+   書き込む構成へ移行できる（POST/GET の疎通確認用スタブ）。
+   ========================================================= */
+const STORAGE_KEY = 'kakeibo_entries_v1';
+const CATEGORY_KEY = 'kakeibo_categories_v1';
+const PEOPLE_KEY = 'kakeibo_people_v1';
+const CONFIG_KEY = 'kakeibo_config_v1';
+const FIXED_KEY = 'kakeibo_fixed_v1';
+const FIXED_LOG_KEY = 'kakeibo_fixed_log_v1';
+const THEME_KEY = 'kakeibo_theme_v1';
+
+const DEFAULT_THEME_COLORS = { self: '#3f7a5c', spouse: '#a9762c' };
+const THEME_PALETTE = ['#3f7a5c','#2f6f8f','#7a5fae','#c1573f','#c2578b','#2f8f8f','#a9762c','#5f7a3f'];
+
+const DEFAULT_CATEGORIES = {
+  expense: ['食費','日用品費','娯楽費','交通費','住居費','電気代','ガス代','水道代','医療費','教育費','保険料','その他'],
+  income: ['給与','賞与','副業','その他収入']
+};
+const DEFAULT_PEOPLE = { self: '自分', spouse: '配偶者' };
+const DEFAULT_CONFIG = { gasUrl: '' };
+
+function loadJSON(key, fallback){
+  try{
+    const raw = localStorage.getItem(key);
+    if(!raw) return structuredClone(fallback);
+    return JSON.parse(raw);
+  }catch(e){ return structuredClone(fallback); }
+}
+function saveJSON(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+
+let entries = loadJSON(STORAGE_KEY, []);
+let categories = loadJSON(CATEGORY_KEY, DEFAULT_CATEGORIES);
+let people = loadJSON(PEOPLE_KEY, DEFAULT_PEOPLE);
+let config = loadJSON(CONFIG_KEY, DEFAULT_CONFIG);
+let fixedCosts = loadJSON(FIXED_KEY, []); // [{id, type, person, category, amount, dayOfMonth, memo, startMonth}]
+let fixedLog = loadJSON(FIXED_LOG_KEY, {}); // { [fixedId]: ['YYYY-MM', ...] } 生成済み月の記録
+let themeColors = loadJSON(THEME_KEY, DEFAULT_THEME_COLORS); // { self, spouse } それぞれのテーマカラー
+
+/* ---- GAS 連携スタブ ----
+   CONFIG.gasUrl が空の間はローカル保存のみで動作し、
+   コンソールに送信予定の内容をログするだけの「疎通確認ダミー」。
+   実際の GAS Web App を作ったら gasUrl を設定するだけで
+   下の fetch が有効になる想定。 */
+async function syncToGAS(action, payload){
+  if(!config.gasUrl){
+    console.log('[GAS dummy sync]', action, payload);
+    return { status:'ok', dummy:true };
+  }
+  try{
+    const res = await fetch(config.gasUrl, {
+      method:'POST',
+      headers:{ 'Content-Type':'text/plain' },
+      body: JSON.stringify({ action, payload })
+    });
+    return await res.json().catch(()=>({status:'ok'}));
+  }catch(e){
+    console.error('GAS sync failed', e);
+    showToast('GAS同期に失敗しました（ローカルには保存済み）');
+    return { status:'error', error:String(e) };
+  }
+}
+
+function uid(){ return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+function persistEntries(){ saveJSON(STORAGE_KEY, entries); }
+function persistCategories(){ saveJSON(CATEGORY_KEY, categories); }
+function persistPeople(){ saveJSON(PEOPLE_KEY, people); }
+function persistConfig(){ saveJSON(CONFIG_KEY, config); }
+function persistFixed(){ saveJSON(FIXED_KEY, fixedCosts); }
+function persistFixedLog(){ saveJSON(FIXED_LOG_KEY, fixedLog); }
+function persistTheme(){ saveJSON(THEME_KEY, themeColors); }
+
+/* ---- テーマカラー適用 ----
+   自分／配偶者それぞれが好きな色を選べるようにし、
+   「入力者」として選ばれている方の色がページ全体のアクセントカラーになる。
+   識別用のドット色（--self-color/--spouse-color）は常に両方反映しておく。 */
+function hexToRgb(hex){
+  hex = (hex||'').replace('#','');
+  if(hex.length===3) hex = hex.split('').map(c=>c+c).join('');
+  const num = parseInt(hex,16) || 0;
+  return { r:(num>>16)&255, g:(num>>8)&255, b:num&255 };
+}
+function tint(hex, amount){
+  const {r,g,b} = hexToRgb(hex);
+  const mix = c => Math.round(c + (255-c)*amount);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+function applyTheme(){
+  const root = document.documentElement;
+  root.style.setProperty('--self-color', themeColors.self);
+  root.style.setProperty('--spouse-color', themeColors.spouse);
+  const accent = themeColors[state.currentPerson] || themeColors.self;
+  root.style.setProperty('--accent', accent);
+  root.style.setProperty('--accent-dim', tint(accent, 0.87));
+}
+
+/* ---- 固定費の自動生成 ----
+   毎月ほぼ同額の費用（家賃・電気代・保険料など）をテンプレート登録しておくと、
+   起動のたびに「まだ記録されていない月」の分だけ自動で家計簿エントリを作る。
+   金額を編集しても、すでに生成済みの月の記録は変更しない（履歴を保つため）。
+   個別の月だけ金額を直したい場合は、生成された記録自体を編集すればよい。 */
+function nextMonth(mk){
+  let [y,m] = mk.split('-').map(Number);
+  m++; if(m>12){ m=1; y++; }
+  return `${y}-${String(m).padStart(2,'0')}`;
+}
+function generateFixedEntries(){
+  const curMonth = todayStr().slice(0,7);
+  let changed = false;
+  fixedCosts.forEach(f=>{
+    if(!fixedLog[f.id]) fixedLog[f.id] = [];
+    let m = f.startMonth || curMonth;
+    let guard = 0;
+    while(m <= curMonth && guard < 1200){
+      guard++;
+      if(!fixedLog[f.id].includes(m)){
+        const [y, mm] = m.split('-').map(Number);
+        const lastDay = new Date(y, mm, 0).getDate();
+        const useDay = Math.min(parseInt(f.dayOfMonth) || 1, lastDay);
+        const date = `${y}-${String(mm).padStart(2,'0')}-${String(useDay).padStart(2,'0')}`;
+        const entry = {
+          id: uid(), date, person: f.person, type: f.type, category: f.category,
+          amount: f.amount, memo: f.memo || '', createdAt: new Date().toISOString(),
+          fixedId: f.id
+        };
+        entries.push(entry);
+        fixedLog[f.id].push(m);
+        changed = true;
+        syncToGAS('addEntry', entry);
+      }
+      m = nextMonth(m);
+    }
+  });
+  if(changed){ persistEntries(); persistFixedLog(); }
+}
+
+/* =========================================================
+   アプリ状態
+   ========================================================= */
+const state = {
+  currentPerson: localStorage.getItem('kakeibo_current_person') || 'self', // 入力者
+  viewMode: 'combined', // 'self' | 'spouse' | 'combined'
+  selectedMonth: null, // 'YYYY-MM' or null = 全期間一覧のみ
+  type: 'expense', // form: expense/income
+  editingId: null, // 編集中のエントリID（nullなら新規入力）
+};
+
+function setCurrentPerson(p){
+  state.currentPerson = p;
+  localStorage.setItem('kakeibo_current_person', p);
+  applyTheme();
+  renderAll();
+}
+
+/* =========================================================
+   ユーティリティ
+   ========================================================= */
+function fmtYen(n){
+  const sign = n < 0 ? '-' : '';
+  return sign + '¥' + Math.abs(Math.round(n)).toLocaleString('ja-JP');
+}
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function monthKey(dateStr){ return dateStr.slice(0,7); }
+function monthLabel(mk){
+  const [y,m] = mk.split('-');
+  return `${y}年${parseInt(m)}月`;
+}
+function personColor(p){ return p==='self' ? 'var(--self-color)' : 'var(--spouse-color)'; }
+function personName(p){ return people[p] || p; }
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+function visibleEntries(){
+  let list = entries;
+  if(state.viewMode !== 'combined'){
+    list = list.filter(e => e.person === state.viewMode);
+  }
+  return list;
+}
+
+/* =========================================================
+   レンダリング: person select
+   ========================================================= */
+function renderPersonSelect(){
+  const el = document.getElementById('personSelect');
+  el.innerHTML = '';
+  ['self','spouse'].forEach(p=>{
+    const btn = document.createElement('button');
+    btn.className = 'person-select-btn' + (state.currentPerson===p ? ' active':'');
+    btn.innerHTML = `<span class="dot" style="background:${personColor(p)}"></span>入力者: ${personName(p)}`;
+    btn.onclick = ()=> setCurrentPerson(p);
+    el.appendChild(btn);
+  });
+}
+
+/* =========================================================
+   レンダリング: メインエリア（家計簿タブ）
+   ========================================================= */
+function renderAll(){
+  renderPersonSelect();
+  renderLedgerTab();
+}
+
+function renderLedgerTab(){
+  const main = document.getElementById('mainArea');
+  const list = visibleEntries();
+
+  // 月別集計
+  const byMonth = {};
+  list.forEach(e=>{
+    const mk = monthKey(e.date);
+    if(!byMonth[mk]) byMonth[mk] = {income:0, expense:0};
+    byMonth[mk][e.type] += e.amount;
+  });
+  const months = Object.keys(byMonth).sort();
+
+  // 今月のサマリー
+  const curMonth = todayStr().slice(0,7);
+  const curAgg = byMonth[curMonth] || {income:0, expense:0};
+  const balance = curAgg.income - curAgg.expense;
+  const editingEntry = state.editingId ? entries.find(e=>e.id===state.editingId) : null;
+
+  main.innerHTML = `
+    <div class="view-toggle" id="viewToggle"></div>
+
+    <div class="summary-grid">
+      <div class="summary-box">
+        <div class="label">今月の収入</div>
+        <div class="val income">${fmtYen(curAgg.income)}</div>
+      </div>
+      <div class="summary-box">
+        <div class="label">今月の支出</div>
+        <div class="val expense">${fmtYen(curAgg.expense)}</div>
+      </div>
+      <div class="summary-box">
+        <div class="label">今月の収支</div>
+        <div class="val balance ${balance>=0?'pos':'neg'}">${fmtYen(balance)}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>${editingEntry ? '入力を編集' : '入力（'+personName(state.currentPerson)+'）'}</h2>
+      <form class="entry-form" id="entryForm">
+        <div class="type-toggle" id="typeToggle">
+          <button type="button" data-type="expense" class="${state.type==='expense'?'active expense':''}">支出</button>
+          <button type="button" data-type="income" class="${state.type==='income'?'active income':''}">収入</button>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>日付</label>
+            <input type="date" id="fDate" value="${todayStr()}" required>
+          </div>
+          <div>
+            <label>費目</label>
+            <select id="fCategory"></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>金額</label>
+            <input type="number" id="fAmount" min="0" step="1" placeholder="0" required>
+          </div>
+        </div>
+        <div>
+          <label>メモ（任意）</label>
+          <input type="text" id="fMemo" placeholder="例）スーパーで食材">
+        </div>
+        <button type="submit" class="submit-btn">${editingEntry ? '更新する' : '記録する'}</button>
+        ${editingEntry ? '<button type="button" class="cancel-btn" id="cancelEdit">編集をキャンセル</button>' : ''}
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>月別 収支の推移</h2>
+      <div class="chart-wrap" id="chartWrap"></div>
+      <div class="legend">
+        <span><i style="background:var(--income)"></i>収入</span>
+        <span><i style="background:var(--expense)"></i>支出</span>
+      </div>
+    </div>
+
+    <div class="card" id="detailCard"></div>
+  `;
+
+  // view toggle
+  const vt = document.getElementById('viewToggle');
+  const modes = [['self','自分のページ'],['spouse','配偶者のページ'],['combined','合算ビュー']];
+  modes.forEach(([key,label])=>{
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.className = state.viewMode===key ? 'active':'';
+    b.onclick = ()=>{ state.viewMode = key; renderLedgerTab(); };
+    vt.appendChild(b);
+  });
+
+  // category options
+  const catSel = document.getElementById('fCategory');
+  fillCategoryOptions(catSel, state.type);
+
+  // 編集中なら既存の値をフォームに反映
+  if(editingEntry){
+    document.getElementById('fDate').value = editingEntry.date;
+    document.getElementById('fAmount').value = editingEntry.amount;
+    document.getElementById('fMemo').value = editingEntry.memo || '';
+    catSel.value = editingEntry.category;
+    document.getElementById('cancelEdit').onclick = ()=>{
+      state.editingId = null;
+      renderLedgerTab();
+    };
+  }
+
+  // type toggle
+  document.querySelectorAll('#typeToggle button').forEach(btn=>{
+    btn.onclick = ()=>{
+      state.type = btn.dataset.type;
+      renderLedgerTab();
+    };
+  });
+
+  // form submit
+  document.getElementById('entryForm').addEventListener('submit', onSubmitEntry);
+
+  // chart
+  renderChart(months, byMonth);
+
+  // detail area (default: selected month or most recent)
+  if(!state.selectedMonth || !months.includes(state.selectedMonth)){
+    state.selectedMonth = months.length ? months[months.length-1] : null;
+  }
+  renderDetail(list);
+}
+
+function fillCategoryOptions(sel, type){
+  sel.innerHTML = '';
+  categories[type].forEach(c=>{
+    const o = document.createElement('option');
+    o.value = c; o.textContent = c;
+    sel.appendChild(o);
+  });
+}
+
+function onSubmitEntry(ev){
+  ev.preventDefault();
+  const date = document.getElementById('fDate').value;
+  const category = document.getElementById('fCategory').value;
+  const amount = parseFloat(document.getElementById('fAmount').value);
+  const memo = document.getElementById('fMemo').value.trim();
+  if(!date || !amount || amount <= 0){
+    showToast('日付と金額を確認してください');
+    return;
+  }
+  if(state.editingId){
+    const idx = entries.findIndex(e=>e.id===state.editingId);
+    if(idx !== -1){
+      entries[idx] = { ...entries[idx], date, category, amount, memo, type: state.type };
+      persistEntries();
+      syncToGAS('updateEntry', entries[idx]);
+      showToast('更新しました');
+    }
+    state.editingId = null;
+  } else {
+    const entry = {
+      id: uid(),
+      date, person: state.currentPerson, type: state.type,
+      category, amount, memo, createdAt: new Date().toISOString()
+    };
+    entries.push(entry);
+    persistEntries();
+    syncToGAS('addEntry', entry);
+    showToast('記録しました');
+  }
+  state.selectedMonth = monthKey(date);
+  renderLedgerTab();
+}
+
+function startEditEntry(id){
+  const e = entries.find(x=>x.id===id);
+  if(!e) return;
+  state.editingId = id;
+  state.type = e.type;
+  renderLedgerTab();
+  const form = document.getElementById('entryForm');
+  if(form) form.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function deleteEntry(id){
+  const idx = entries.findIndex(e=>e.id===id);
+  if(idx===-1) return;
+  entries.splice(idx,1);
+  if(state.editingId === id) state.editingId = null;
+  persistEntries();
+  syncToGAS('deleteEntry', { id });
+  showToast('削除しました');
+  renderLedgerTab();
+}
+
+/* =========================================================
+   グラフ（SVGで自前描画・外部ライブラリ不使用）
+   ========================================================= */
+function renderChart(months, byMonth){
+  const wrap = document.getElementById('chartWrap');
+  if(months.length === 0){
+    wrap.innerHTML = '<div class="empty-note">まだデータがありません。入力するとここにグラフが表示されます。</div>';
+    return;
+  }
+  const barGroupW = 56;
+  const w = Math.max(320, months.length * barGroupW + 40);
+  const h = 180;
+  const padBottom = 24;
+  const padTop = 10;
+  const maxVal = Math.max(1, ...months.map(mk => Math.max(byMonth[mk].income, byMonth[mk].expense)));
+  const scale = (h - padTop - padBottom) / maxVal;
+
+  let bars = '';
+  months.forEach((mk, i)=>{
+    const gx = 20 + i * barGroupW;
+    const inc = byMonth[mk].income, exp = byMonth[mk].expense;
+    const incH = inc * scale, expH = exp * scale;
+    const selected = mk === state.selectedMonth;
+    bars += `
+      <g class="month-group" data-month="${mk}" style="cursor:pointer">
+        <rect x="${gx}" y="${h - padBottom - incH}" width="18" height="${incH}" rx="3"
+          fill="var(--income)" class="bar" opacity="${selected?1:0.85}"/>
+        <rect x="${gx+22}" y="${h - padBottom - expH}" width="18" height="${expH}" rx="3"
+          fill="var(--expense)" class="bar" opacity="${selected?1:0.85}"/>
+        ${selected ? `<rect x="${gx-4}" y="${padTop-4}" width="48" height="${h-padTop-padBottom+8}" fill="none" stroke="var(--accent)" stroke-dasharray="3,3" rx="6"/>` : ''}
+        <text x="${gx+20}" y="${h-6}" text-anchor="middle" class="axis-label">${mk.slice(2).replace('-','/')}</text>
+      </g>`;
+  });
+
+  wrap.innerHTML = `<svg class="chart" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${bars}</svg>`;
+
+  wrap.querySelectorAll('.month-group').forEach(g=>{
+    g.addEventListener('click', ()=>{
+      state.selectedMonth = g.dataset.month;
+      renderChartSelectionOnly();
+      renderDetail(visibleEntries());
+    });
+  });
+}
+function renderChartSelectionOnly(){
+  // re-render chart highlight without full page rebuild
+  const list = visibleEntries();
+  const byMonth = {};
+  list.forEach(e=>{
+    const mk = monthKey(e.date);
+    if(!byMonth[mk]) byMonth[mk] = {income:0, expense:0};
+    byMonth[mk][e.type] += e.amount;
+  });
+  renderChart(Object.keys(byMonth).sort(), byMonth);
+}
+
+/* =========================================================
+   月次明細
+   ========================================================= */
+function renderDetail(list){
+  const card = document.getElementById('detailCard');
+  if(!state.selectedMonth){
+    card.innerHTML = '<div class="empty-note">データがまだありません</div>';
+    return;
+  }
+  const monthEntries = list.filter(e => monthKey(e.date) === state.selectedMonth)
+                            .sort((a,b)=> b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+
+  let rows = monthEntries.map(e=>`
+    <div class="entry-item">
+      <span class="who-dot" style="background:${personColor(e.person)}" title="${personName(e.person)}"></span>
+      <div class="main">
+        <div class="cat">${escapeHtml(e.category)}${e.fixedId ? ' <span class="fixed-badge">固定</span>' : ''}</div>
+        <div class="meta">${e.date} ・ ${personName(e.person)}${e.memo ? ' ・ '+escapeHtml(e.memo) : ''}</div>
+      </div>
+      <div class="amt ${e.type}">${e.type==='expense'?'-':'+'}${fmtYen(e.amount)}</div>
+      <button class="edit-btn" title="編集" onclick="startEditEntry('${e.id}')">✎</button>
+      <button class="del" title="削除" onclick="deleteEntry('${e.id}')">✕</button>
+    </div>
+  `).join('');
+
+  if(!rows) rows = '<div class="empty-note">この月の記録はありません</div>';
+
+  card.innerHTML = `
+    <div class="month-header">
+      <div class="m-label">${monthLabel(state.selectedMonth)}の明細</div>
+    </div>
+    <div class="entry-list">${rows}</div>
+  `;
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* =========================================================
+   初回セットアップ（この端末を使うのは自分／配偶者どちらか選ぶ）
+   -----------------------------------------------------------
+   選択は localStorage に保存され、次回以降は自動でその人の画面が
+   開く（右上の切り替えでいつでも変更可）。未選択のまま「自分」に
+   決め打ちしてしまうと、配偶者が初めて開いたときに自分の画面から
+   始まってしまうため、初回だけ必ずどちらか選んでもらう。
+   ========================================================= */
+function showPersonSetup(){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="modal-overlay" style="align-items:center;">
+      <div class="modal" style="text-align:center;">
+        <h3>ようこそ</h3>
+        <p style="font-size:13px;color:var(--text-dim);line-height:1.6;margin:0 0 18px;">
+          この端末では、どちらとして使いますか？<br>あとから右上の切り替えでいつでも変更できます。
+        </p>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <button type="button" class="submit-btn" id="setupSelf" style="background:${themeColors.self}">${escapeHtml(people.self)}として使う</button>
+          <button type="button" class="submit-btn" id="setupSpouse" style="background:${themeColors.spouse}">${escapeHtml(people.spouse)}として使う</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('setupSelf').onclick = ()=>{ closeModal(); setCurrentPerson('self'); };
+  document.getElementById('setupSpouse').onclick = ()=>{ closeModal(); setCurrentPerson('spouse'); };
+}
+
+/* =========================================================
+   設定モーダル（費目管理・名前・GAS URL）
+   ========================================================= */
+document.getElementById('btnSettings').addEventListener('click', openSettingsModal);
+
+function openSettingsModal(){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal">
+        <h3>設定</h3>
+
+        <div class="field-group">
+          <h4>利用者の名前</h4>
+          <div class="name-edit-row">
+            <span class="dot" style="background:var(--self-color)"></span>
+            <input type="text" id="nameSelf" value="${escapeAttr(people.self)}" placeholder="自分">
+          </div>
+          <div class="name-edit-row">
+            <span class="dot" style="background:var(--spouse-color)"></span>
+            <input type="text" id="nameSpouse" value="${escapeAttr(people.spouse)}" placeholder="配偶者">
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>テーマカラー</h4>
+          <div class="theme-row">
+            <span class="theme-row-label"><span class="dot" id="selfThemeDot" style="background:${themeColors.self}"></span>${escapeHtml(people.self)}</span>
+            <div class="swatch-row" id="selfSwatches"></div>
+            <input type="color" id="selfCustomColor" class="custom-color" value="${themeColors.self}">
+          </div>
+          <div class="theme-row">
+            <span class="theme-row-label"><span class="dot" id="spouseThemeDot" style="background:${themeColors.spouse}"></span>${escapeHtml(people.spouse)}</span>
+            <div class="swatch-row" id="spouseSwatches"></div>
+            <input type="color" id="spouseCustomColor" class="custom-color" value="${themeColors.spouse}">
+          </div>
+          <div class="sync-status">「入力者」として選ばれている方の色が、ボタンなどページ全体に反映されます。</div>
+        </div>
+
+        <div class="field-group">
+          <h4>支出の費目</h4>
+          <div class="chip-row" id="expenseChips"></div>
+          <div class="add-chip-row">
+            <input type="text" id="newExpenseCat" placeholder="新しい費目を追加">
+            <button type="button" id="addExpenseCat">追加</button>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>収入の費目</h4>
+          <div class="chip-row" id="incomeChips"></div>
+          <div class="add-chip-row">
+            <input type="text" id="newIncomeCat" placeholder="新しい収入区分を追加">
+            <button type="button" id="addIncomeCat">追加</button>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>Google Apps Script 連携（任意・後で設定可）</h4>
+          <label>GAS Web App URL</label>
+          <input type="text" id="gasUrlInput" value="${escapeAttr(config.gasUrl)}" placeholder="https://script.google.com/macros/s/.../exec">
+          <div class="sync-status">
+            未設定の間はローカル保存のみで動作します（<code>console.log</code>に同期予定の内容を出力する疎通確認ダミー）。<br>
+            GASのWebアプリを公開したら、ここにURLを貼るだけで書き込みが有効になります。
+          </div>
+        </div>
+
+        <div class="modal-close-row">
+          <button class="cancel-btn" id="modalCancel">閉じる</button>
+          <button class="submit-btn" id="modalSave">保存</button>
+        </div>
+      </div>
+    </div>
+  `;
+  renderChips('expenseChips', 'expense');
+  renderChips('incomeChips', 'income');
+  renderThemeSwatches('selfSwatches', 'self');
+  renderThemeSwatches('spouseSwatches', 'spouse');
+  document.getElementById('selfCustomColor').oninput = (e)=> pickThemeColor('self', e.target.value);
+  document.getElementById('spouseCustomColor').oninput = (e)=> pickThemeColor('spouse', e.target.value);
+
+  document.getElementById('addExpenseCat').onclick = ()=> addCategory('expense', 'newExpenseCat');
+  document.getElementById('addIncomeCat').onclick = ()=> addCategory('income', 'newIncomeCat');
+  document.getElementById('modalCancel').onclick = closeModal;
+  document.getElementById('modalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='modalOverlay') closeModal(); });
+  document.getElementById('modalSave').onclick = ()=>{
+    people.self = document.getElementById('nameSelf').value.trim() || '自分';
+    people.spouse = document.getElementById('nameSpouse').value.trim() || '配偶者';
+    config.gasUrl = document.getElementById('gasUrlInput').value.trim();
+    persistPeople(); persistCategories(); persistConfig();
+    closeModal();
+    showToast('設定を保存しました');
+    renderAll();
+  };
+}
+function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
+function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }
+
+function renderChips(containerId, type){
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  categories[type].forEach((c, idx)=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `${escapeHtml(c)} <button type="button" title="削除">✕</button>`;
+    chip.querySelector('button').onclick = ()=>{
+      categories[type].splice(idx,1);
+      renderChips(containerId, type);
+    };
+    el.appendChild(chip);
+  });
+}
+function renderThemeSwatches(containerId, person){
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  THEME_PALETTE.forEach(color=>{
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch' + (themeColors[person] === color ? ' selected' : '');
+    b.style.background = color;
+    b.title = color;
+    b.onclick = ()=> pickThemeColor(person, color);
+    el.appendChild(b);
+  });
+}
+function pickThemeColor(person, color){
+  themeColors[person] = color;
+  persistTheme();
+  applyTheme();
+  renderThemeSwatches(person==='self' ? 'selfSwatches' : 'spouseSwatches', person);
+  const customInput = document.getElementById(person==='self' ? 'selfCustomColor' : 'spouseCustomColor');
+  if(customInput) customInput.value = color;
+  const dot = document.getElementById(person==='self' ? 'selfThemeDot' : 'spouseThemeDot');
+  if(dot) dot.style.background = color;
+  renderAll();
+}
+
+function addCategory(type, inputId){
+  const input = document.getElementById(inputId);
+  const val = input.value.trim();
+  if(!val) return;
+  if(categories[type].includes(val)){ input.value=''; return; }
+  categories[type].push(val);
+  input.value = '';
+  renderChips(type==='expense' ? 'expenseChips' : 'incomeChips', type);
+}
+
+/* =========================================================
+   固定費モーダル（毎月自動入力される費用の登録・編集・削除）
+   ========================================================= */
+document.getElementById('btnFixed').addEventListener('click', openFixedModal);
+
+let fixedEditingId = null; // null=一覧表示のみ, 'new'=新規追加中, それ以外=そのIDを編集中
+
+function openFixedModal(){
+  fixedEditingId = null;
+  renderFixedModal();
+}
+
+function renderFixedModal(){
+  const root = document.getElementById('modalRoot');
+  const showForm = fixedEditingId !== null;
+  const editing = (showForm && fixedEditingId !== 'new') ? fixedCosts.find(f=>f.id===fixedEditingId) : null;
+
+  const listHtml = fixedCosts.length ? fixedCosts.map(f=>`
+    <div class="fixed-item">
+      <span class="who-dot" style="background:${personColor(f.person)}" title="${personName(f.person)}"></span>
+      <div class="main">
+        <div class="cat">${escapeHtml(f.category)}<span class="fixed-type ${f.type}">${f.type==='expense'?'支出':'収入'}</span></div>
+        <div class="meta">${personName(f.person)} ・ 毎月${f.dayOfMonth}日${f.memo ? ' ・ '+escapeHtml(f.memo) : ''}</div>
+      </div>
+      <div class="amt ${f.type}">${fmtYen(f.amount)}</div>
+      <button class="edit-btn" title="編集" onclick="editFixed('${f.id}')">✎</button>
+      <button class="del" title="削除" onclick="removeFixed('${f.id}')">✕</button>
+    </div>
+  `).join('') : '<div class="empty-note">まだ固定費が登録されていません</div>';
+
+  root.innerHTML = `
+    <div class="modal-overlay" id="fixedModalOverlay">
+      <div class="modal">
+        <h3>固定費の管理</h3>
+        <div class="sync-status" style="margin-bottom:12px;">
+          家賃・電気代・保険料など毎月ほぼ同じ金額のものを登録すると、次回以降は自動で家計簿に記録されます。金額が変わったら「編集」してください（すでに記録済みの月は変わらず、今後の月から新しい金額が使われます）。
+        </div>
+        <div class="fixed-list">${listHtml}</div>
+        ${showForm ? renderFixedForm(editing) : '<button type="button" class="submit-btn" id="btnAddFixed" style="margin-top:12px;">+ 固定費を追加</button>'}
+        <div class="modal-close-row">
+          <button class="cancel-btn" id="fixedModalClose">閉じる</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('fixedModalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='fixedModalOverlay') closeModal(); });
+  document.getElementById('fixedModalClose').onclick = closeModal;
+
+  if(!showForm){
+    document.getElementById('btnAddFixed').onclick = ()=>{ fixedEditingId = 'new'; renderFixedModal(); };
+  } else {
+    wireFixedForm(editing);
+  }
+}
+
+function renderFixedForm(editing){
+  const type = editing ? editing.type : 'expense';
+  return `
+    <div class="card" style="margin-top:10px;padding:14px;">
+      <div class="type-toggle" id="fixedTypeToggle">
+        <button type="button" data-type="expense" class="${type==='expense'?'active expense':''}">支出</button>
+        <button type="button" data-type="income" class="${type==='income'?'active income':''}">収入</button>
+      </div>
+      <div class="form-row" style="margin-top:10px;">
+        <div>
+          <label>入力者</label>
+          <select id="fixedPerson">
+            <option value="self" ${(!editing || editing.person==='self') ? 'selected':''}>${escapeHtml(people.self)}</option>
+            <option value="spouse" ${(editing && editing.person==='spouse') ? 'selected':''}>${escapeHtml(people.spouse)}</option>
+          </select>
+        </div>
+        <div>
+          <label>費目</label>
+          <select id="fixedCategory"></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label>金額</label>
+          <input type="number" id="fixedAmount" min="0" step="1" value="${editing ? editing.amount : ''}" placeholder="0">
+        </div>
+        <div>
+          <label>毎月の日付</label>
+          <input type="number" id="fixedDay" min="1" max="31" value="${editing ? editing.dayOfMonth : 1}">
+        </div>
+      </div>
+      <div>
+        <label>メモ（任意）</label>
+        <input type="text" id="fixedMemo" value="${editing ? escapeAttr(editing.memo||'') : ''}" placeholder="例）住宅ローン返済">
+      </div>
+      <div class="modal-close-row" style="margin-top:12px;">
+        <button type="button" class="cancel-btn" id="fixedFormCancel">キャンセル</button>
+        <button type="button" class="submit-btn" id="fixedFormSave">${editing ? '更新する' : '追加する'}</button>
+      </div>
+    </div>
+  `;
+}
+
+function wireFixedForm(editing){
+  const typeToggle = document.getElementById('fixedTypeToggle');
+  const catSel = document.getElementById('fixedCategory');
+  let curType = editing ? editing.type : 'expense';
+
+  function fillCat(){
+    fillCategoryOptions(catSel, curType);
+    if(editing && editing.type === curType) catSel.value = editing.category;
+  }
+  fillCat();
+
+  typeToggle.querySelectorAll('button').forEach(btn=>{
+    btn.onclick = ()=>{
+      curType = btn.dataset.type;
+      typeToggle.querySelectorAll('button').forEach(b=>{
+        b.classList.remove('active','expense','income');
+      });
+      btn.classList.add('active', curType);
+      fillCat();
+    };
+  });
+
+  document.getElementById('fixedFormCancel').onclick = ()=>{ fixedEditingId = null; renderFixedModal(); };
+  document.getElementById('fixedFormSave').onclick = ()=>{
+    const amount = parseFloat(document.getElementById('fixedAmount').value);
+    const day = Math.min(31, Math.max(1, parseInt(document.getElementById('fixedDay').value) || 1));
+    const category = catSel.value;
+    const person = document.getElementById('fixedPerson').value;
+    const memo = document.getElementById('fixedMemo').value.trim();
+    if(!amount || amount <= 0 || !category){
+      showToast('費目と金額を確認してください');
+      return;
+    }
+    if(editing){
+      Object.assign(editing, { type: curType, person, category, amount, dayOfMonth: day, memo });
+      persistFixed();
+      showToast('固定費を更新しました');
+    } else {
+      fixedCosts.push({
+        id: uid(), type: curType, person, category, amount, dayOfMonth: day, memo,
+        startMonth: todayStr().slice(0,7)
+      });
+      persistFixed();
+      showToast('固定費を追加しました');
+    }
+    fixedEditingId = null;
+    generateFixedEntries();
+    renderFixedModal();
+    renderLedgerTab();
+  };
+}
+
+function editFixed(id){ fixedEditingId = id; renderFixedModal(); }
+function removeFixed(id){
+  fixedCosts = fixedCosts.filter(f=>f.id!==id);
+  persistFixed();
+  renderFixedModal();
+  showToast('固定費を削除しました（すでに記録済みの明細は残ります）');
+}
+
+/* =========================================================
+   タブ切り替え（月次評価・ライフプランは準備中プレースホルダー）
+   ========================================================= */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  if(btn.classList.contains('disabled')) return;
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    if(btn.dataset.tab === 'ledger') renderLedgerTab();
+  });
+});
+
+/* =========================================================
+   初期化
+   ========================================================= */
+generateFixedEntries();
+applyTheme();
+if(localStorage.getItem('kakeibo_current_person') === null){
+  showPersonSetup();
+} else {
+  renderAll();
+}
+</script>
+</body>
+</html>
