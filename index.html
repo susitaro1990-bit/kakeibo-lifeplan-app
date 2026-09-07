@@ -285,6 +285,37 @@
     width:30px;height:26px;padding:0;border:1px solid var(--border);border-radius:8px;cursor:pointer;
     background:none;
   }
+
+  .score-wrap{text-align:center;padding:6px 0 4px;}
+  .score-num{font-size:48px;font-weight:800;line-height:1;color:var(--text);}
+  .score-num.good{color:var(--income);}
+  .score-num.warn{color:#c98a2c;}
+  .score-num.bad{color:var(--expense);}
+  .score-unit{font-size:13px;color:var(--text-dim);margin-top:2px;}
+  .score-comment{font-size:13px;color:var(--text-dim);text-align:center;margin-top:8px;}
+
+  .eval-item{margin-bottom:14px;}
+  .eval-item:last-child{margin-bottom:0;}
+  .eval-item-top{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:5px;gap:8px;}
+  .eval-cat{font-weight:700;flex-shrink:0;}
+  .eval-amt{color:var(--text-dim);font-size:12px;white-space:nowrap;}
+  .eval-bar-track{height:8px;background:var(--accent-dim);border-radius:4px;overflow:hidden;}
+  .eval-bar-fill{height:100%;background:var(--income);border-radius:4px;transition:width .3s;}
+  .eval-bar-fill.over{background:var(--expense);}
+
+  .budget-row{display:flex;gap:10px;align-items:center;}
+  .budget-row label{flex:1;margin:0;font-size:13px;font-weight:600;color:var(--text);}
+  .budget-row input{width:120px;}
+
+  .asset-legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;justify-content:center;}
+  .asset-legend-item{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-dim);cursor:pointer;white-space:nowrap;}
+  .asset-legend-item input{margin:0;}
+  .legend-dot{width:9px;height:9px;border-radius:2px;display:inline-block;flex-shrink:0;}
+  .child-card{border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;background:#fbfcfb;}
+  .edu-stage-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .edu-stage-label{width:52px;flex-shrink:0;font-size:12.5px;font-weight:700;}
+  .edu-stage-row select{flex:2;}
+  .edu-stage-row input{flex:1;}
 </style>
 </head>
 <body>
@@ -294,10 +325,10 @@
     <div class="title-row">
       <div class="brand">
         <svg class="brand-icon" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <rect x="5" y="4" width="30" height="32" rx="4" fill="currentColor"/>
-          <rect x="5" y="4" width="8" height="32" rx="4" fill="#000" opacity="0.15"/>
-          <path d="M20 11c-5 0-9 4-9 9.5S15 30 20 30s9-4.5 9-9.5S25 11 20 11z" fill="#fff" opacity="0.94"/>
-          <path d="M20 12.5v16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.5"/>
+          <circle cx="20" cy="20" r="18" fill="currentColor"/>
+          <circle cx="20" cy="20" r="18" fill="none" stroke="#000" stroke-width="1" opacity="0.12"/>
+          <circle cx="20" cy="20" r="14.5" fill="none" stroke="#fff" stroke-width="1" opacity="0.3"/>
+          <text x="20" y="21" text-anchor="middle" dominant-baseline="central" font-family="Georgia,'Hiragino Mincho ProN',serif" font-size="21" font-weight="700" fill="#fff">¥</text>
         </svg>
         <div class="brand-text">
           <h1>夫婦家計簿</h1>
@@ -324,8 +355,8 @@
     <div class="person-select" id="personSelect"></div>
     <nav class="tabs">
       <button class="tab-btn active" data-tab="ledger">家計簿入力</button>
-      <button class="tab-btn disabled" disabled>月次評価<br><small style="font-weight:400;">(準備中)</small></button>
-      <button class="tab-btn disabled" disabled>ライフプラン<br><small style="font-weight:400;">(準備中)</small></button>
+      <button class="tab-btn" data-tab="evaluation">月次評価</button>
+      <button class="tab-btn" data-tab="lifeplan">ライフプラン</button>
     </nav>
   </div>
 </header>
@@ -353,6 +384,7 @@ const CONFIG_KEY = 'kakeibo_config_v1';
 const FIXED_KEY = 'kakeibo_fixed_v1';
 const FIXED_LOG_KEY = 'kakeibo_fixed_log_v1';
 const THEME_KEY = 'kakeibo_theme_v1';
+const BUDGET_KEY = 'kakeibo_budgets_v1';
 
 const DEFAULT_THEME_COLORS = { self: '#3f7a5c', spouse: '#a9762c' };
 const THEME_PALETTE = ['#3f7a5c','#2f6f8f','#7a5fae','#c1573f','#c2578b','#2f8f8f','#a9762c','#5f7a3f'];
@@ -363,6 +395,88 @@ const DEFAULT_CATEGORIES = {
 };
 const DEFAULT_PEOPLE = { self: '自分', spouse: '配偶者' };
 const DEFAULT_CONFIG = { gasUrl: '' };
+const LIFEPLAN_KEY = 'kakeibo_lifeplan_v1';
+
+/* 教育費の目安（年額・円）。あくまで一般的な統計に基づく参考値で、自由に上書き可能。 */
+const EDU_COST_REF = {
+  kindergarten: { label: '幼稚園', startAge: 3, years: 3, public: 220000, private: 530000 },
+  elementary:   { label: '小学校', startAge: 6, years: 6, public: 350000, private: 1670000 },
+  juniorhigh:   { label: '中学校', startAge: 12, years: 3, public: 540000, private: 1430000 },
+  highschool:   { label: '高校',   startAge: 15, years: 3, public: 510000, private: 1050000 },
+  university:   { label: '大学',   startAge: 18, years: 4, public: 600000, private: 1150000 },
+};
+const INVESTMENT_TYPES = {
+  nisa_tsumitate: 'つみたてNISA枠',
+  nisa_growth: '成長投資枠',
+  ideco: 'iDeCo',
+  taxable: '課税投資枠',
+};
+const ASSET_SERIES_COLORS = {
+  cash: '#3f7a5c',
+  nisa_tsumitate: '#2f6f8f',
+  nisa_growth: '#7a5fae',
+  ideco: '#c1573f',
+  taxable: '#c2578b',
+  realEstate: '#5f7a3f',
+  total: '#1f2a24',
+};
+
+function defaultPersonIncome(){
+  return { monthlyIncome: 0, incomeGrowthMode: 'rate', incomeGrowthRate: 1, incomeGrowthFixed: 0, leaves: [] };
+}
+
+function defaultLifeplan(){
+  return {
+    currentAge: null,
+    inflationRate: 2,
+    baseline: {
+      monthlyExpense: 0,
+      self: defaultPersonIncome(),
+      spouse: defaultPersonIncome(),
+    },
+    mortgage: { balance: 0, years: 0, rate: 1.0 },
+    realEstate: { price: 0, appreciationRate: 0 },
+    retirement: { pensionAnnual: 0, livingCostAnnual: 0, retireAge: 65 },
+    retirementBonus: { amount: 0, age: 65 },
+    car: { cycleYears: 0, cost: 0 },
+    insurances: [],
+    investments: [],
+    children: [
+      { id:'child1', name:'長男', birthYear: 2022,
+        edu:{ kindergarten:'public', elementary:'public', juniorhigh:'public', highschool:'public', university:'public' }, eduCost:{} },
+      { id:'child2', name:'次男', birthYear: 2026,
+        edu:{ kindergarten:'public', elementary:'public', juniorhigh:'public', highschool:'public', university:'public' }, eduCost:{} },
+    ],
+    otherEvents: [],
+    visibleSeries: { cash:true, nisa_tsumitate:true, nisa_growth:true, ideco:true, taxable:true, realEstate:true, total:true },
+  };
+}
+
+/* 古いバージョンの保存データに baseline や incomeGrowthRate が
+   欠けているケースを補う（新しい項目を追加するたびにここも更新する）。
+   2026-09時点：baseline.monthlyIncome が直接持たれていた旧構造から、
+   自分／配偶者それぞれの収入を持つ baseline.self / baseline.spouse
+   構造へ移行する処理も兼ねる。 */
+function normalizeLifeplanBaseline(p){
+  if(!p.baseline) p.baseline = { monthlyExpense: 0, self: defaultPersonIncome(), spouse: defaultPersonIncome() };
+  const b = p.baseline;
+  if(!b.self){
+    // 旧構造（単一の世帯収入）が残っている場合は「自分」の収入として引き継ぐ
+    b.self = defaultPersonIncome();
+    if(b.monthlyIncome != null) b.self.monthlyIncome = b.monthlyIncome;
+    if(b.incomeGrowthMode != null) b.self.incomeGrowthMode = b.incomeGrowthMode;
+    if(b.incomeGrowthRate != null) b.self.incomeGrowthRate = b.incomeGrowthRate;
+    if(b.incomeGrowthFixed != null) b.self.incomeGrowthFixed = b.incomeGrowthFixed;
+    delete b.monthlyIncome; delete b.incomeGrowthMode; delete b.incomeGrowthRate; delete b.incomeGrowthFixed;
+  }
+  if(!b.spouse) b.spouse = defaultPersonIncome();
+  [b.self, b.spouse].forEach(person=>{
+    if(person.incomeGrowthRate == null) person.incomeGrowthRate = 1;
+    if(person.incomeGrowthMode == null) person.incomeGrowthMode = 'rate';
+    if(person.incomeGrowthFixed == null) person.incomeGrowthFixed = 0;
+    if(!person.leaves) person.leaves = [];
+  });
+}
 
 function loadJSON(key, fallback){
   try{
@@ -380,6 +494,9 @@ let config = loadJSON(CONFIG_KEY, DEFAULT_CONFIG);
 let fixedCosts = loadJSON(FIXED_KEY, []); // [{id, type, person, category, amount, dayOfMonth, memo, startMonth}]
 let fixedLog = loadJSON(FIXED_LOG_KEY, {}); // { [fixedId]: ['YYYY-MM', ...] } 生成済み月の記録
 let themeColors = loadJSON(THEME_KEY, DEFAULT_THEME_COLORS); // { self, spouse } それぞれのテーマカラー
+let budgets = loadJSON(BUDGET_KEY, {}); // { [費目名]: 月間予算額 } 支出の費目のみ対象
+let lifeplan = loadJSON(LIFEPLAN_KEY, defaultLifeplan());
+normalizeLifeplanBaseline(lifeplan); // 旧バージョンからの移行用
 
 /* ---- GAS 連携スタブ ----
    CONFIG.gasUrl が空の間はローカル保存のみで動作し、
@@ -405,15 +522,72 @@ async function syncToGAS(action, payload){
   }
 }
 
+/* ---- 起動時にスプレッドシートから取得 ----
+   GAS Web App URL が設定されていれば、起動時に一度だけ GET して
+   スプレッドシート側の最新内容（家計簿の全件＋設定類）を取り込む。
+   スプレッドシートを「正」とみなし、ローカルの値を上書きする
+   （＝配偶者の端末で行われた変更もここで反映される）。
+   取得に失敗しても致命的にはせず、ローカルのデータで動作を続ける。 */
+async function pullFromGAS(){
+  if(!config.gasUrl) return;
+  try{
+    const res = await fetch(config.gasUrl, { method:'GET' });
+    const data = await res.json();
+    if(Array.isArray(data.entries)){
+      // GAS/スプレッドシート側で日付が Date 型に自動変換され、
+      // ISO日時（例: 2026-09-06T15:00:00.000Z）のまま返ってくることがあるため、
+      // 念のためアプリ側でも "YYYY-MM-DD" に正規化しておく。
+      entries = data.entries.map(e=>({
+        ...e,
+        amount: Number(e.amount) || 0,
+        date: normalizeDateString(e.date),
+      }));
+      saveJSON(STORAGE_KEY, entries);
+    }
+    const st = data.state || {};
+    const applyState = (key, setter) => {
+      if(st[key] == null) return;
+      try{ setter(JSON.parse(st[key])); }catch(err){ console.error('failed to parse GAS state for', key, err); }
+    };
+    applyState('categories', v=>{ categories = v; saveJSON(CATEGORY_KEY, categories); });
+    applyState('people', v=>{ people = v; saveJSON(PEOPLE_KEY, people); });
+    applyState('fixedCosts', v=>{ fixedCosts = v; saveJSON(FIXED_KEY, fixedCosts); });
+    applyState('fixedLog', v=>{ fixedLog = v; saveJSON(FIXED_LOG_KEY, fixedLog); });
+    applyState('budgets', v=>{ budgets = v; saveJSON(BUDGET_KEY, budgets); });
+    applyState('themeColors', v=>{ themeColors = v; saveJSON(THEME_KEY, themeColors); });
+    applyState('lifeplan', v=>{ lifeplan = v; normalizeLifeplanBaseline(lifeplan); saveJSON(LIFEPLAN_KEY, lifeplan); });
+
+    generateFixedEntries();
+    applyTheme();
+    const activeTabBtn = document.querySelector('.tab-btn.active');
+    const activeTab = activeTabBtn ? activeTabBtn.dataset.tab : 'ledger';
+    if(activeTab === 'evaluation') renderEvaluationTab();
+    else if(activeTab === 'lifeplan') renderLifeplanTab();
+    else renderAll();
+    showToast('スプレッドシートと同期しました');
+  }catch(e){
+    console.error('GAS pull failed', e);
+  }
+}
+
 function uid(){ return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
 function persistEntries(){ saveJSON(STORAGE_KEY, entries); }
-function persistCategories(){ saveJSON(CATEGORY_KEY, categories); }
-function persistPeople(){ saveJSON(PEOPLE_KEY, people); }
-function persistConfig(){ saveJSON(CONFIG_KEY, config); }
-function persistFixed(){ saveJSON(FIXED_KEY, fixedCosts); }
-function persistFixedLog(){ saveJSON(FIXED_LOG_KEY, fixedLog); }
-function persistTheme(){ saveJSON(THEME_KEY, themeColors); }
+function persistCategories(){ saveJSON(CATEGORY_KEY, categories); syncState('categories', categories); }
+function persistPeople(){ saveJSON(PEOPLE_KEY, people); syncState('people', people); }
+function persistConfig(){ saveJSON(CONFIG_KEY, config); } // gasUrl自体は接続先の設定なので同期しない
+function persistFixed(){ saveJSON(FIXED_KEY, fixedCosts); syncState('fixedCosts', fixedCosts); }
+function persistFixedLog(){ saveJSON(FIXED_LOG_KEY, fixedLog); syncState('fixedLog', fixedLog); }
+function persistTheme(){ saveJSON(THEME_KEY, themeColors); syncState('themeColors', themeColors); }
+function persistBudgets(){ saveJSON(BUDGET_KEY, budgets); syncState('budgets', budgets); }
+function persistLifeplan(){ saveJSON(LIFEPLAN_KEY, lifeplan); syncState('lifeplan', lifeplan); }
+
+/* 「設定」系のデータ（費目・固定費・予算・ライフプランなど）をまとめて
+   GAS の Settings シートへ送る薄いラッパー。データ本体（entries）は
+   1件ずつ addEntry/updateEntry/deleteEntry で送るので対象外。 */
+function syncState(key, value){
+  syncToGAS('setState', { key, value: JSON.stringify(value) });
+}
 
 /* ---- テーマカラー適用 ----
    自分／配偶者それぞれが好きな色を選べるようにし、
@@ -488,6 +662,7 @@ const state = {
   selectedMonth: null, // 'YYYY-MM' or null = 全期間一覧のみ
   type: 'expense', // form: expense/income
   editingId: null, // 編集中のエントリID（nullなら新規入力）
+  evalMonth: null, // 月次評価タブで表示中の月（YYYY-MM）
 };
 
 function setCurrentPerson(p){
@@ -507,6 +682,18 @@ function fmtYen(n){
 function todayStr(){
   const d = new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function normalizeDateString(d){
+  if(!d) return d;
+  const s = String(d);
+  if(s.length <= 10) return s;
+  // スプレッドシート側でDate型に変換された値はUTCのISO文字列で返ってくる
+  // （例: JST 2026-09-07 00:00 が "2026-09-06T15:00:00.000Z" になる）。
+  // JSTに戻してから日付部分だけを取り出す。
+  const dt = new Date(s);
+  if(isNaN(dt.getTime())) return s.slice(0,10);
+  const jst = new Date(dt.getTime() + 9*60*60*1000);
+  return jst.toISOString().slice(0,10);
 }
 function monthKey(dateStr){ return dateStr.slice(0,7); }
 function monthLabel(mk){
@@ -842,6 +1029,887 @@ function renderDetail(list){
 function escapeHtml(s){
   return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+
+/* =========================================================
+   月次評価タブ
+   -----------------------------------------------------------
+   費目ごとに設定した「月間予算」と、その月の実績（支出額の合計）を
+   比較して点数化する。貯金の達成/未達は評価対象に含めない（そもそも
+   このアプリでは貯金額を評価軸として扱っていないため、自然と対象外）。
+   予算は費目ごとに1つだけ保持する単純な仕組みで、過去の月を見るとき
+   も「今設定されている予算」を当てはめて評価する（月ごとに予算を
+   さかのぼって記録する仕組みは持たない簡易版）。
+   ========================================================= */
+function evalMonthScore(mk){
+  const byCat = {};
+  entries.forEach(e=>{
+    if(e.type !== 'expense' || monthKey(e.date) !== mk) return;
+    byCat[e.category] = (byCat[e.category] || 0) + e.amount;
+  });
+  const details = Object.keys(budgets)
+    .filter(cat => budgets[cat] > 0)
+    .map(cat=>{
+      const budget = budgets[cat];
+      const actual = byCat[cat] || 0;
+      const ratio = actual / budget;
+      const score = ratio <= 1 ? 100 : Math.max(0, Math.round(100 - (ratio - 1) * 100));
+      return { category: cat, budget, actual, ratio, score };
+    })
+    .sort((a,b)=> b.ratio - a.ratio);
+  const overall = details.length
+    ? Math.round(details.reduce((s,d)=>s+d.score,0) / details.length)
+    : null;
+  return { overall, details };
+}
+function scoreClass(score){
+  if(score === null) return '';
+  if(score >= 80) return 'good';
+  if(score >= 50) return 'warn';
+  return 'bad';
+}
+function scoreComment(score){
+  if(score === null) return '費目ごとの予算を設定すると、ここに評価が表示されます。';
+  if(score >= 90) return '素晴らしい！ほぼ予算どおりに収まっています。';
+  if(score >= 80) return '順調です。この調子で。';
+  if(score >= 50) return 'やや使いすぎ気味の費目があります。';
+  return '予算オーバーが目立ちます。内訳を見直してみましょう。';
+}
+function shiftEvalMonth(delta){
+  let [y,m] = state.evalMonth.split('-').map(Number);
+  m += delta;
+  while(m > 12){ m -= 12; y++; }
+  while(m < 1){ m += 12; y--; }
+  state.evalMonth = `${y}-${String(m).padStart(2,'0')}`;
+  renderEvaluationTab();
+}
+
+function renderEvaluationTab(){
+  const main = document.getElementById('mainArea');
+  if(!state.evalMonth) state.evalMonth = todayStr().slice(0,7);
+  const { overall, details } = evalMonthScore(state.evalMonth);
+  const cls = scoreClass(overall);
+
+  const detailsHtml = details.length ? details.map(d=>`
+    <div class="eval-item">
+      <div class="eval-item-top">
+        <span class="eval-cat">${escapeHtml(d.category)}</span>
+        <span class="eval-amt">${fmtYen(d.actual)} / ${fmtYen(d.budget)}</span>
+      </div>
+      <div class="eval-bar-track">
+        <div class="eval-bar-fill ${d.ratio > 1 ? 'over' : ''}" style="width:${Math.min(100, d.ratio*100)}%"></div>
+      </div>
+    </div>
+  `).join('') : '<div class="empty-note">まだ予算が設定されている費目がありません</div>';
+
+  main.innerHTML = `
+    <div class="card">
+      <div class="month-header">
+        <button type="button" id="evalPrev">‹ 前月</button>
+        <div class="m-label">${monthLabel(state.evalMonth)}の評価</div>
+        <button type="button" id="evalNext">次月 ›</button>
+      </div>
+      <div class="score-wrap">
+        <div class="score-num ${cls}">${overall === null ? '—' : overall}</div>
+        <div class="score-unit">${overall === null ? '' : '点 / 100点'}</div>
+      </div>
+      <div class="score-comment">${scoreComment(overall)}</div>
+    </div>
+
+    <div class="card">
+      <h2>費目別 予算と実績（変動費）</h2>
+      <div>${detailsHtml}</div>
+      <button type="button" class="cancel-btn" id="btnEditBudget" style="margin-top:14px;width:100%;">予算を設定する</button>
+    </div>
+
+    <div class="card">
+      <h2>評価の推移</h2>
+      <div class="chart-wrap" id="evalHistoryChart"></div>
+    </div>
+  `;
+
+  document.getElementById('evalPrev').onclick = ()=> shiftEvalMonth(-1);
+  document.getElementById('evalNext').onclick = ()=> shiftEvalMonth(1);
+  document.getElementById('btnEditBudget').onclick = openBudgetModal;
+
+  renderEvalHistoryChart();
+}
+
+function renderEvalHistoryChart(){
+  const wrap = document.getElementById('evalHistoryChart');
+  if(!Object.keys(budgets).some(cat => budgets[cat] > 0)){
+    wrap.innerHTML = '<div class="empty-note">予算を設定すると、ここに月ごとの評価の推移が表示されます。</div>';
+    return;
+  }
+  const monthsSet = new Set(
+    entries.filter(e=>e.type==='expense').map(e=>monthKey(e.date))
+  );
+  monthsSet.add(state.evalMonth);
+  const months = Array.from(monthsSet).sort();
+
+  const barGroupW = 44;
+  const w = Math.max(320, months.length * barGroupW + 30);
+  const h = 160;
+  const padBottom = 22, padTop = 20;
+  const usable = h - padTop - padBottom;
+
+  let bars = '';
+  months.forEach((mk,i)=>{
+    const { overall } = evalMonthScore(mk);
+    const gx = 16 + i * barGroupW;
+    const val = overall === null ? 0 : overall;
+    const barH = (val/100) * usable;
+    const color = overall === null ? '#dfe3e0' : (overall>=80 ? 'var(--income)' : overall>=50 ? '#c98a2c' : 'var(--expense)');
+    const selected = mk === state.evalMonth;
+    bars += `
+      <g class="eval-month-group" data-month="${mk}" style="cursor:pointer">
+        ${selected ? `<rect x="${gx-4}" y="${padTop-6}" width="32" height="${h-padTop-padBottom+10}" fill="none" stroke="var(--accent)" stroke-dasharray="3,3" rx="6"/>` : ''}
+        <rect x="${gx}" y="${h - padBottom - barH}" width="24" height="${Math.max(barH,2)}" rx="3" fill="${color}" opacity="${selected?1:0.85}"/>
+        <text x="${gx+12}" y="${h - padBottom - barH - 5}" text-anchor="middle" class="axis-label" font-weight="700">${overall===null?'':overall}</text>
+        <text x="${gx+12}" y="${h-6}" text-anchor="middle" class="axis-label">${mk.slice(2).replace('-','/')}</text>
+      </g>`;
+  });
+
+  wrap.innerHTML = `<svg class="chart" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${bars}</svg>`;
+  wrap.querySelectorAll('.eval-month-group').forEach(g=>{
+    g.addEventListener('click', ()=>{
+      state.evalMonth = g.dataset.month;
+      renderEvaluationTab();
+    });
+  });
+}
+
+function openBudgetModal(){
+  const root = document.getElementById('modalRoot');
+  const rows = categories.expense.map(cat=>`
+    <div class="budget-row">
+      <label>${escapeHtml(cat)}</label>
+      <input type="number" min="0" step="1" class="budget-input" data-cat="${escapeAttr(cat)}" value="${budgets[cat] || ''}" placeholder="未設定">
+    </div>
+  `).join('');
+  root.innerHTML = `
+    <div class="modal-overlay" id="budgetModalOverlay">
+      <div class="modal">
+        <h3>費目別 月間予算の設定</h3>
+        <div class="sync-status" style="margin-bottom:14px;">
+          変動費（食費・日用品費など）の1か月あたりの予算を設定すると、月次評価で使われます。空欄のままの費目は評価対象になりません。
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;">${rows}</div>
+        <div class="modal-close-row">
+          <button class="cancel-btn" id="budgetModalClose">閉じる</button>
+          <button class="submit-btn" id="budgetModalSave">保存</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('budgetModalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='budgetModalOverlay') closeModal(); });
+  document.getElementById('budgetModalClose').onclick = closeModal;
+  document.getElementById('budgetModalSave').onclick = ()=>{
+    document.querySelectorAll('.budget-input').forEach(inp=>{
+      const cat = inp.dataset.cat;
+      const val = parseFloat(inp.value);
+      if(val > 0) budgets[cat] = val;
+      else delete budgets[cat];
+    });
+    persistBudgets();
+    closeModal();
+    showToast('予算を保存しました');
+    renderEvaluationTab();
+  };
+}
+
+/* =========================================================
+   ライフプランタブ
+   -----------------------------------------------------------
+   家計簿とは別軸の独立したシミュレーション。「基本設定」で入力した
+   月あたりの収入・支出を基準値として使い、そこに住宅ローン・教育費・
+   車の買い替え・保険・その他イベントといった増減要因を年ごとに重ねて、
+   100歳までの資産推移を概算する。家計簿の実績はここには反映されない
+   （逆に、ここで立てた計画を基準に家計簿の使いすぎを確認する使い方を
+   想定している）。あくまで目安のシミュレーションであり、税金や社会
+   保険料の詳細、運用の暴落・市場変動などは考慮しない簡易モデル。
+
+   一度設定したらほとんど変更しない項目が多いため、入力項目は
+   すべて「設定ページ」（renderLifeplanSettingsPage）にまとめ、
+   ライフプランタブを開いたときは基本的にダッシュボード
+   （renderLifeplanDashboard、グラフと要約のみ）を表示する。
+   ========================================================= */
+let lifeplanRows = null;
+let lifeplanView = 'dashboard'; // 'dashboard' | 'settings'
+
+function mortgageAnnualPayment(balance, years, ratePct){
+  if(balance <= 0 || years <= 0) return 0;
+  const r = ratePct/100;
+  if(r === 0) return balance/years;
+  return balance * r / (1 - Math.pow(1+r, -years));
+}
+
+/* 1人分の年収を計算する。育休などの「収入が減る期間」が該当する年は
+   その期間に指定された月収をそのまま使い、それ以外は通常の昇給
+   （年率複利 or 定額）カーブに沿って計算する。育休が明けた翌年以降は、
+   育休がなかった場合と同じ経過年数ベースの昇給カーブに戻る
+   （育休期間中も「時が止まる」わけではない、という単純化）。 */
+function computePersonIncomeForYear(person, year, i){
+  const leave = (person.leaves||[]).find(l => year >= l.startYear && year < l.startYear + Math.max(1, l.years||1));
+  if(leave) return (leave.monthlyIncome||0) * 12;
+  const baseAnnual = (person.monthlyIncome||0) * 12;
+  if(person.incomeGrowthMode === 'fixed'){
+    return baseAnnual + (person.incomeGrowthFixed||0) * i;
+  }
+  const growthFactor = Math.pow(1 + (person.incomeGrowthRate||0)/100, i);
+  return baseAnnual * growthFactor;
+}
+
+function educationExpenseForYear(year){
+  let total = 0;
+  lifeplan.children.forEach(child=>{
+    const age = year - child.birthYear;
+    Object.keys(EDU_COST_REF).forEach(stageKey=>{
+      const stage = EDU_COST_REF[stageKey];
+      const endAge = stage.startAge + stage.years - 1;
+      if(age >= stage.startAge && age <= endAge){
+        const choice = child.edu[stageKey] || 'public';
+        const override = child.eduCost && child.eduCost[stageKey];
+        total += (override != null && override > 0) ? override : stage[choice];
+      }
+    });
+  });
+  return total;
+}
+
+function computeLifePlanProjection(){
+  if(!lifeplan.currentAge) return null;
+  const startYear = new Date().getFullYear();
+  const yearsToProject = Math.max(1, 100 - lifeplan.currentAge + 1);
+  const infl = lifeplan.inflationRate/100;
+
+  let mortgageBalance = lifeplan.mortgage.balance;
+  const mortgagePayment = mortgageAnnualPayment(lifeplan.mortgage.balance, lifeplan.mortgage.years, lifeplan.mortgage.rate);
+  let mortgageYearsLeft = lifeplan.mortgage.years;
+
+  let realEstateValue = lifeplan.realEstate.price;
+  let cash = 0;
+  const invBalances = {};
+  lifeplan.investments.forEach(inv => invBalances[inv.id] = 0);
+  const insuranceAnnualTotal = lifeplan.insurances.reduce((s,i)=> s + (i.annualPremium||0), 0);
+
+  const rows = [];
+  for(let i=0; i<yearsToProject; i++){
+    const year = startYear + i;
+    const age = lifeplan.currentAge + i;
+    const isRetired = age >= lifeplan.retirement.retireAge;
+    const inflationFactor = Math.pow(1+infl, i);
+
+    let income;
+    if(isRetired){
+      income = lifeplan.retirement.pensionAnnual * inflationFactor;
+    } else {
+      income = computePersonIncomeForYear(lifeplan.baseline.self, year, i)
+              + computePersonIncomeForYear(lifeplan.baseline.spouse, year, i);
+    }
+    if(age === lifeplan.retirementBonus.age && lifeplan.retirementBonus.amount > 0){
+      income += lifeplan.retirementBonus.amount;
+    }
+
+    let baseLiving = isRetired ? lifeplan.retirement.livingCostAnnual : (lifeplan.baseline.monthlyExpense||0)*12;
+    baseLiving *= inflationFactor;
+
+    let mortgageCost = 0;
+    if(mortgageBalance > 0 && mortgageYearsLeft > 0){
+      const interest = mortgageBalance * (lifeplan.mortgage.rate/100);
+      let principal = mortgagePayment - interest;
+      if(principal > mortgageBalance) principal = mortgageBalance;
+      if(principal < 0) principal = 0;
+      mortgageCost = interest + principal;
+      mortgageBalance = Math.max(0, mortgageBalance - principal);
+      mortgageYearsLeft--;
+    }
+
+    if(i > 0) realEstateValue *= (1 + lifeplan.realEstate.appreciationRate/100);
+    const realEstateNet = Math.max(0, realEstateValue - mortgageBalance);
+
+    let carCost = 0;
+    if(lifeplan.car.cycleYears > 0 && i > 0 && i % lifeplan.car.cycleYears === 0){
+      carCost = lifeplan.car.cost * inflationFactor;
+    }
+
+    const eduCost = educationExpenseForYear(year) * inflationFactor;
+
+    let eventCost = 0;
+    lifeplan.otherEvents.forEach(ev=>{ if(ev.year === year) eventCost += ev.amount; });
+
+    let investContribution = 0;
+    const investTotals = { nisa_tsumitate:0, nisa_growth:0, ideco:0, taxable:0 };
+    lifeplan.investments.forEach(inv=>{
+      const annualAmount = isRetired ? 0 : (inv.monthlyAmount||0) * 12;
+      invBalances[inv.id] = invBalances[inv.id] * (1 + (inv.returnRate||0)/100) + annualAmount;
+      investContribution += annualAmount;
+      investTotals[inv.type] = (investTotals[inv.type]||0) + invBalances[inv.id];
+    });
+
+    const insuranceCost = insuranceAnnualTotal * inflationFactor;
+    const totalExpense = baseLiving + mortgageCost + carCost + eduCost + eventCost + insuranceCost;
+    const netCashFlow = income - totalExpense - investContribution;
+    cash += netCashFlow;
+
+    const totalAssets = cash + investTotals.nisa_tsumitate + investTotals.nisa_growth + investTotals.ideco + investTotals.taxable + realEstateNet;
+
+    rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired });
+  }
+  return rows;
+}
+
+function renderLifeplanTab(){
+  if(lifeplanView === 'settings') renderLifeplanSettingsPage();
+  else renderLifeplanDashboard();
+}
+
+function openLifeplanSettings(){
+  lifeplanView = 'settings';
+  renderLifeplanTab();
+}
+
+function renderLifeplanDashboard(){
+  const main = document.getElementById('mainArea');
+  lifeplanRows = computeLifePlanProjection();
+
+  const legendItems = [
+    ['cash','貯蓄（現金）'], ['nisa_tsumitate','つみたてNISA'], ['nisa_growth','成長投資枠'],
+    ['ideco','iDeCo'], ['taxable','課税投資枠'], ['realEstate','不動産純資産'], ['total','総資産'],
+  ];
+  const legendHtml = legendItems.map(([key,label])=>`
+    <label class="asset-legend-item">
+      <input type="checkbox" class="asset-toggle" data-key="${key}" ${lifeplan.visibleSeries[key] ? 'checked' : ''}>
+      <span class="legend-dot" style="background:${ASSET_SERIES_COLORS[key]}"></span>${label}
+    </label>
+  `).join('');
+
+  const lastRow = lifeplanRows ? lifeplanRows[lifeplanRows.length-1] : null;
+  const shortfallRow = lifeplanRows ? lifeplanRows.find(r => r.cash < 0) : null;
+
+  main.innerHTML = `
+    ${!lifeplanRows ? `
+      <div class="card">
+        <h2>ライフプラン</h2>
+        <div class="empty-note">まだライフプランが設定されていません。「設定を編集」から年齢・インフレ率・住宅ローンなどを入力してください。</div>
+        <button type="button" class="submit-btn" id="btnLifeplanSettings" style="width:100%;margin-top:12px;">設定を編集する</button>
+      </div>
+    ` : `
+      <div class="card">
+        <h2>100歳時点の総資産見込み</h2>
+        <div class="score-wrap">
+          <div class="score-num ${lastRow.totalAssets >= 0 ? 'good' : 'bad'}">${fmtYen(lastRow.totalAssets)}</div>
+          <div class="score-unit">${lastRow.year}年（${lastRow.age}歳）時点</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>資金ショートのチェック</h2>
+        ${shortfallRow ? `
+          <div class="score-comment" style="color:var(--expense);font-weight:700;">
+            ⚠ ${shortfallRow.year}年（${shortfallRow.age}歳）に、貯蓄（現金）が初めてマイナスになる見込みです。
+          </div>
+          <div class="score-comment">収入の伸び率や積立投資、住宅ローンなどの前提を見直してみましょう。</div>
+        ` : `
+          <div class="score-comment" style="color:var(--income);">✓ 100歳まで、貯蓄（現金）がマイナスになる年はありません。</div>
+        `}
+      </div>
+
+      <div class="card">
+        <h2>年次収支の見通し</h2>
+        <div class="chart-wrap" id="lifeplanFlowChart"></div>
+        <div class="legend">
+          <span><i style="background:var(--income)"></i>収入</span>
+          <span><i style="background:var(--expense)"></i>支出</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>資産推移</h2>
+        <div class="chart-wrap" id="lifeplanAssetChart"></div>
+        <div class="asset-legend">${legendHtml}</div>
+      </div>
+
+      <button type="button" class="cancel-btn" id="btnLifeplanSettings" style="width:100%;margin-bottom:16px;">設定を編集する（年齢・住宅ローン・教育費・投資枠など）</button>
+    `}
+  `;
+
+  document.getElementById('btnLifeplanSettings').onclick = openLifeplanSettings;
+
+  if(lifeplanRows){
+    renderLifeplanFlowChart(lifeplanRows);
+    renderLifeplanAssetChart(lifeplanRows);
+    document.querySelectorAll('.asset-toggle').forEach(cb=>{
+      cb.addEventListener('change', ()=>{
+        lifeplan.visibleSeries[cb.dataset.key] = cb.checked;
+        persistLifeplan();
+        renderLifeplanAssetChart(lifeplanRows);
+      });
+    });
+  }
+}
+
+function renderLifeplanFlowChart(rows){
+  const wrap = document.getElementById('lifeplanFlowChart');
+  if(!wrap) return;
+  const barGroupW = 20;
+  const w = Math.max(320, rows.length*barGroupW + 30);
+  const h = 180;
+  const padBottom = 22, padTop = 10;
+  const maxVal = Math.max(1, ...rows.map(r=>Math.max(r.income, r.expense)));
+  const scale = (h-padTop-padBottom)/maxVal;
+  let bars = '';
+  rows.forEach((r,i)=>{
+    const gx = 10 + i*barGroupW;
+    const incH = r.income*scale, expH = r.expense*scale;
+    bars += `
+      <g>
+        <rect x="${gx}" y="${h-padBottom-incH}" width="7" height="${Math.max(incH,0)}" fill="var(--income)" opacity="0.85"/>
+        <rect x="${gx+8}" y="${h-padBottom-expH}" width="7" height="${Math.max(expH,0)}" fill="var(--expense)" opacity="0.85"/>
+        ${i % 5 === 0 ? `<text x="${gx+7}" y="${h-6}" text-anchor="middle" class="axis-label">${r.year}</text>` : ''}
+      </g>`;
+  });
+  wrap.innerHTML = `<svg class="chart" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${bars}</svg>`;
+}
+
+function renderLifeplanAssetChart(rows){
+  const wrap = document.getElementById('lifeplanAssetChart');
+  if(!wrap) return;
+  const seriesDefs = [
+    { key:'cash', color: ASSET_SERIES_COLORS.cash, get:r=>r.cash },
+    { key:'nisa_tsumitate', color: ASSET_SERIES_COLORS.nisa_tsumitate, get:r=>r.invest.nisa_tsumitate },
+    { key:'nisa_growth', color: ASSET_SERIES_COLORS.nisa_growth, get:r=>r.invest.nisa_growth },
+    { key:'ideco', color: ASSET_SERIES_COLORS.ideco, get:r=>r.invest.ideco },
+    { key:'taxable', color: ASSET_SERIES_COLORS.taxable, get:r=>r.invest.taxable },
+    { key:'realEstate', color: ASSET_SERIES_COLORS.realEstate, get:r=>r.realEstateNet },
+    { key:'total', color: ASSET_SERIES_COLORS.total, get:r=>r.totalAssets },
+  ];
+  const visible = seriesDefs.filter(s => lifeplan.visibleSeries[s.key]);
+  const maxVal = Math.max(1, ...rows.map(r=>Math.max(r.totalAssets, 0)));
+  const w = Math.max(320, rows.length*14 + 40);
+  const h = 220;
+  const padBottom = 22, padTop = 14, padLeft = 6;
+  const usable = h - padTop - padBottom;
+  const scaleY = v => h - padBottom - (Math.max(0,v)/maxVal) * usable;
+  const scaleX = i => padLeft + i*14;
+
+  const linesHtml = visible.map(s=>{
+    const pts = rows.map((r,i)=> `${scaleX(i)},${scaleY(s.get(r))}`).join(' ');
+    return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="${s.key==='total' ? 2.5 : 1.8}" opacity="${s.key==='total' ? 1 : 0.85}"/>`;
+  }).join('');
+
+  let labels = '';
+  rows.forEach((r,i)=>{
+    if(i % 5 === 0) labels += `<text x="${scaleX(i)}" y="${h-6}" text-anchor="middle" class="axis-label">${r.year}</text>`;
+  });
+
+  wrap.innerHTML = `<svg class="chart" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${linesHtml}${labels}</svg>`;
+}
+
+function renderChildEduCard(child){
+  const currentYear = new Date().getFullYear();
+  const age = currentYear - child.birthYear;
+  const stagesHtml = Object.keys(EDU_COST_REF).map(stageKey=>{
+    const stage = EDU_COST_REF[stageKey];
+    const choice = child.edu[stageKey] || 'public';
+    const refCost = stage[choice];
+    const overrideVal = (child.eduCost && child.eduCost[stageKey] != null) ? child.eduCost[stageKey] : '';
+    return `
+      <div class="edu-stage-row">
+        <div class="edu-stage-label">${stage.label}</div>
+        <select class="child-edu-choice" data-child="${child.id}" data-stage="${stageKey}">
+          <option value="public" ${choice==='public'?'selected':''}>公立（目安 年${Math.round(stage.public/10000)}万円）</option>
+          <option value="private" ${choice==='private'?'selected':''}>私立（目安 年${Math.round(stage.private/10000)}万円）</option>
+        </select>
+        <input type="number" class="child-edu-override" data-child="${child.id}" data-stage="${stageKey}" placeholder="${refCost}" value="${overrideVal}" title="年額を上書き（空欄なら目安を使用）">
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="child-card">
+      <div class="form-row">
+        <div><label>名前</label><input type="text" class="child-name" data-child="${child.id}" value="${escapeAttr(child.name)}"></div>
+        <div><label>生まれ年</label><input type="number" class="child-birthyear" data-child="${child.id}" value="${child.birthYear}"></div>
+      </div>
+      <div class="sync-status" style="margin:4px 0 8px;">現在 ${age}歳。費目の右の欄に金額を入れると目安を上書きできます。</div>
+      ${stagesHtml}
+    </div>`;
+}
+
+function wireChildEduCards(){
+  document.querySelectorAll('.child-name').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const c = lifeplan.children.find(x=>x.id===inp.dataset.child);
+      if(c) c.name = inp.value.trim() || c.name;
+    });
+  });
+  document.querySelectorAll('.child-birthyear').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const c = lifeplan.children.find(x=>x.id===inp.dataset.child);
+      if(c) c.birthYear = parseInt(inp.value) || c.birthYear;
+      collectLifeplanFormValues();
+      renderLifeplanSettingsPage();
+    });
+  });
+  document.querySelectorAll('.child-edu-choice').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const c = lifeplan.children.find(x=>x.id===sel.dataset.child);
+      if(c) c.edu[sel.dataset.stage] = sel.value;
+      collectLifeplanFormValues();
+      renderLifeplanSettingsPage();
+    });
+  });
+  document.querySelectorAll('.child-edu-override').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const c = lifeplan.children.find(x=>x.id===inp.dataset.child);
+      if(!c) return;
+      if(!c.eduCost) c.eduCost = {};
+      const val = parseFloat(inp.value);
+      if(val > 0) c.eduCost[inp.dataset.stage] = val;
+      else delete c.eduCost[inp.dataset.stage];
+    });
+  });
+}
+
+/* =========================================================
+   自分／配偶者それぞれの収入カード（設定ページ内）
+   -----------------------------------------------------------
+   ライフプランは夫婦2人分なので、収入は自分・配偶者を別々に入力し、
+   シミュレーション時に合算する。育休などで一時的に収入が下がる期間
+   も、それぞれの収入カードの中で複数登録できるようにしてある。
+   ========================================================= */
+function renderIncomeCard(personKey){
+  const person = lifeplan.baseline[personKey];
+  const name = personName(personKey);
+  const prefix = 'lp' + (personKey==='self' ? 'Self' : 'Spouse');
+
+  const leaveRows = (person.leaves||[]).map(l=>`
+    <div class="fixed-item">
+      <div class="main">
+        <div class="cat">${l.startYear}年から${l.years}年間</div>
+        <div class="meta">その間の月収 ${fmtYen(l.monthlyIncome)}</div>
+      </div>
+      <button class="del" title="削除" onclick="removeIncomeLeave('${personKey}','${l.id}')">✕</button>
+    </div>
+  `).join('') || '<div class="empty-note">育休などの期間は未登録</div>';
+
+  return `
+    <div class="card">
+      <h2>${escapeHtml(name)}の収入</h2>
+      <div class="form-row">
+        <div><label>月あたりの手取り収入</label><input type="number" id="${prefix}Income" value="${person.monthlyIncome||''}" placeholder="0"></div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label>昇給の方式</label>
+          <div class="type-toggle" id="${prefix}GrowthModeToggle">
+            <button type="button" data-mode="rate" class="${person.incomeGrowthMode!=='fixed' ? 'active income' : ''}">年率（%）</button>
+            <button type="button" data-mode="fixed" class="${person.incomeGrowthMode==='fixed' ? 'active income' : ''}">定額（円/年）</button>
+          </div>
+          <input type="hidden" id="${prefix}GrowthMode" value="${person.incomeGrowthMode==='fixed' ? 'fixed' : 'rate'}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div id="${prefix}GrowthRateField" ${person.incomeGrowthMode==='fixed' ? 'hidden' : ''}>
+          <label>収入の伸び率（年率 %）</label>
+          <input type="number" step="0.1" id="${prefix}GrowthRate" value="${person.incomeGrowthRate}">
+        </div>
+        <div id="${prefix}GrowthFixedField" ${person.incomeGrowthMode==='fixed' ? '' : 'hidden'}>
+          <label>毎年の昇給額（円/年）</label>
+          <input type="number" step="1000" id="${prefix}GrowthFixed" value="${person.incomeGrowthFixed||''}" placeholder="例）50000">
+        </div>
+      </div>
+
+      <h4 style="font-size:12.5px;color:var(--text-dim);margin:16px 0 8px;font-weight:700;">育休などで収入が減る期間</h4>
+      <div class="fixed-list">${leaveRows}</div>
+      <div class="form-row" style="margin-top:8px;">
+        <div><label>開始年</label><input type="number" id="${prefix}LeaveYear" placeholder="例）2027"></div>
+        <div><label>期間（年）</label><input type="number" id="${prefix}LeaveYears" placeholder="例）1"></div>
+      </div>
+      <div class="form-row">
+        <div><label>その間の月収</label><input type="number" id="${prefix}LeaveIncome" placeholder="例）150000"></div>
+      </div>
+      <button type="button" class="cancel-btn" id="${prefix}BtnAddLeave" style="margin-top:8px;width:100%;">+ 育休などの期間を追加</button>
+    </div>
+  `;
+}
+
+function wireIncomeCard(personKey){
+  const prefix = 'lp' + (personKey==='self' ? 'Self' : 'Spouse');
+
+  document.querySelectorAll(`#${prefix}GrowthModeToggle button`).forEach(btn=>{
+    btn.onclick = ()=>{
+      document.querySelectorAll(`#${prefix}GrowthModeToggle button`).forEach(b=>b.classList.remove('active','income'));
+      btn.classList.add('active','income');
+      document.getElementById(`${prefix}GrowthMode`).value = btn.dataset.mode;
+      document.getElementById(`${prefix}GrowthRateField`).hidden = (btn.dataset.mode === 'fixed');
+      document.getElementById(`${prefix}GrowthFixedField`).hidden = (btn.dataset.mode !== 'fixed');
+    };
+  });
+
+  document.getElementById(`${prefix}BtnAddLeave`).onclick = ()=>{
+    const startYear = parseInt(document.getElementById(`${prefix}LeaveYear`).value);
+    const years = parseInt(document.getElementById(`${prefix}LeaveYears`).value);
+    const monthlyIncome = parseFloat(document.getElementById(`${prefix}LeaveIncome`).value);
+    if(!startYear || !years){ showToast('開始年と期間を入力してください'); return; }
+    collectLifeplanFormValues();
+    lifeplan.baseline[personKey].leaves.push({ id: uid(), startYear, years, monthlyIncome: monthlyIncome || 0 });
+    renderLifeplanSettingsPage();
+  };
+}
+
+function removeIncomeLeave(personKey, id){
+  collectLifeplanFormValues();
+  lifeplan.baseline[personKey].leaves = lifeplan.baseline[personKey].leaves.filter(l=>l.id!==id);
+  renderLifeplanSettingsPage();
+}
+
+function backFromLifeplanSettings(){
+  lifeplan = loadJSON(LIFEPLAN_KEY, defaultLifeplan());
+  normalizeLifeplanBaseline(lifeplan);
+  lifeplanView = 'dashboard';
+  renderLifeplanTab();
+}
+
+function renderLifeplanSettingsPage(){
+  const main = document.getElementById('mainArea');
+  const p = lifeplan;
+
+  const insuranceRows = p.insurances.map(ins=>`
+    <div class="fixed-item">
+      <div class="main">
+        <div class="cat">${escapeHtml(ins.name)}</div>
+        <div class="meta">年間 ${fmtYen(ins.annualPremium)}</div>
+      </div>
+      <button class="del" title="削除" onclick="removeInsurance('${ins.id}')">✕</button>
+    </div>
+  `).join('') || '<div class="empty-note">未登録</div>';
+
+  const investmentRows = p.investments.map(inv=>`
+    <div class="fixed-item">
+      <div class="main">
+        <div class="cat">${escapeHtml(inv.name || INVESTMENT_TYPES[inv.type])}<span class="fixed-type income">${INVESTMENT_TYPES[inv.type]}</span></div>
+        <div class="meta">月${fmtYen(inv.monthlyAmount)} ・ 想定利回り 年${inv.returnRate}%</div>
+      </div>
+      <button class="del" title="削除" onclick="removeInvestment('${inv.id}')">✕</button>
+    </div>
+  `).join('') || '<div class="empty-note">未登録</div>';
+
+  const eventRows = p.otherEvents.map(ev=>`
+    <div class="fixed-item">
+      <div class="main">
+        <div class="cat">${escapeHtml(ev.name)}</div>
+        <div class="meta">${ev.year}年 ・ ${fmtYen(ev.amount)}</div>
+      </div>
+      <button class="del" title="削除" onclick="removeOtherEvent('${ev.id}')">✕</button>
+    </div>
+  `).join('') || '<div class="empty-note">未登録</div>';
+
+  const childrenRows = p.children.map(c => renderChildEduCard(c)).join('');
+
+  main.innerHTML = `
+    <button type="button" class="cancel-btn" id="lpBackLink" style="width:100%;margin-bottom:14px;">← 保存せずダッシュボードに戻る</button>
+
+    <div class="card">
+      <h2>基本設定</h2>
+      <div class="form-row">
+        <div>
+          <label>現在の年齢（自分）</label>
+          <input type="number" id="lpAge" min="0" max="99" value="${p.currentAge || ''}" placeholder="例）35">
+        </div>
+        <div>
+          <label>インフレ率（年率 %）</label>
+          <input type="number" id="lpInflation" step="0.1" value="${p.inflationRate}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div><label>月あたりの支出（世帯合計の基準値）</label><input type="number" id="lpBaselineExpense" value="${p.baseline.monthlyExpense||''}" placeholder="0"></div>
+      </div>
+      <div class="sync-status">支出は世帯合計の基準値です。収入は下で自分・配偶者それぞれ入力し、合算してシミュレーションします（いずれも家計簿の実績とは連動しません）。<br>
+      税金・社会保険料の詳細計算はせず、「手取り」を直接入力する簡易方式です。リタイア後は世帯の年金額に切り替わります（年金額もインフレ率にあわせて実質的な目減りを考慮します）。</div>
+    </div>
+
+    ${renderIncomeCard('self')}
+    ${renderIncomeCard('spouse')}
+
+    <div class="card">
+      <h2>住宅ローン</h2>
+      <div class="form-row">
+        <div><label>残高</label><input type="number" id="lpMortgageBalance" value="${p.mortgage.balance||''}" placeholder="0"></div>
+        <div><label>残り返済年数</label><input type="number" id="lpMortgageYears" value="${p.mortgage.years||''}" placeholder="0"></div>
+      </div>
+      <div class="form-row">
+        <div><label>金利（年率 %）</label><input type="number" step="0.01" id="lpMortgageRate" value="${p.mortgage.rate}"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>不動産（マンション等）</h2>
+      <div class="form-row">
+        <div><label>購入価格 / 現在価値</label><input type="number" id="lpRePrice" value="${p.realEstate.price||''}" placeholder="0"></div>
+        <div><label>想定価格変動率（年率 %、マイナス可）</label><input type="number" step="0.1" id="lpReRate" value="${p.realEstate.appreciationRate}"></div>
+      </div>
+      <div class="sync-status">住宅ローン残高を差し引いた正味の不動産資産（不動産純資産）が資産推移グラフに反映されます。</div>
+    </div>
+
+    <div class="card">
+      <h2>老後資金</h2>
+      <div class="form-row">
+        <div><label>年金見込み額（年額）</label><input type="number" id="lpPension" value="${p.retirement.pensionAnnual||''}" placeholder="0"></div>
+        <div><label>老後の生活費（年額）</label><input type="number" id="lpRetireLiving" value="${p.retirement.livingCostAnnual||''}" placeholder="0"></div>
+      </div>
+      <div class="form-row">
+        <div><label>リタイア年齢</label><input type="number" id="lpRetireAge" value="${p.retirement.retireAge}"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>退職金</h2>
+      <div class="form-row">
+        <div><label>見込み額</label><input type="number" id="lpRetireBonus" value="${p.retirementBonus.amount||''}" placeholder="0"></div>
+        <div><label>受取年齢</label><input type="number" id="lpRetireBonusAge" value="${p.retirementBonus.age}"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>車の買い替え</h2>
+      <div class="form-row">
+        <div><label>周期（年）</label><input type="number" id="lpCarCycle" value="${p.car.cycleYears||''}" placeholder="例）7"></div>
+        <div><label>想定費用（相場目安：約250万円）</label><input type="number" id="lpCarCost" value="${p.car.cost||''}" placeholder="2500000"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>保険</h2>
+      <div class="fixed-list">${insuranceRows}</div>
+      <div class="form-row" style="margin-top:8px;">
+        <div><input type="text" id="newInsName" placeholder="保険名（例：生命保険）"></div>
+        <div><input type="number" id="newInsAmount" placeholder="年間保険料"></div>
+      </div>
+      <button type="button" class="cancel-btn" id="btnAddInsurance" style="margin-top:8px;width:100%;">+ 保険を追加</button>
+    </div>
+
+    <div class="card">
+      <h2>積立投資枠</h2>
+      <div class="fixed-list">${investmentRows}</div>
+      <div class="form-row" style="margin-top:8px;">
+        <div>
+          <label>種類</label>
+          <select id="newInvType">
+            <option value="nisa_tsumitate">つみたてNISA枠</option>
+            <option value="nisa_growth">成長投資枠</option>
+            <option value="ideco">iDeCo</option>
+            <option value="taxable">課税投資枠</option>
+          </select>
+        </div>
+        <div><label>名称（任意）</label><input type="text" id="newInvName" placeholder="例）米国株口座"></div>
+      </div>
+      <div class="form-row">
+        <div><label>月々の積立額</label><input type="number" id="newInvAmount" placeholder="30000"></div>
+        <div><label>期待年率（%）</label><input type="number" step="0.1" id="newInvRate" placeholder="5"></div>
+      </div>
+      <button type="button" class="cancel-btn" id="btnAddInvestment" style="margin-top:8px;width:100%;">+ 積立枠を追加</button>
+    </div>
+
+    <div class="card">
+      <h2>教育費</h2>
+      ${childrenRows}
+    </div>
+
+    <div class="card">
+      <h2>その他大きなイベント</h2>
+      <div class="fixed-list">${eventRows}</div>
+      <div class="form-row" style="margin-top:8px;">
+        <div><input type="text" id="newEvName" placeholder="例）リフォーム"></div>
+        <div><input type="number" id="newEvYear" placeholder="発生年（例：2035）"></div>
+      </div>
+      <div class="form-row">
+        <div><input type="number" id="newEvAmount" placeholder="想定費用"></div>
+      </div>
+      <button type="button" class="cancel-btn" id="btnAddEvent" style="margin-top:8px;width:100%;">+ イベントを追加</button>
+    </div>
+
+    <button type="button" class="submit-btn" id="lpSaveBtn" style="width:100%;margin-bottom:16px;">保存してダッシュボードに戻る</button>
+  `;
+
+  document.getElementById('lpBackLink').onclick = backFromLifeplanSettings;
+
+  document.getElementById('btnAddInsurance').onclick = ()=>{
+    const name = document.getElementById('newInsName').value.trim();
+    const amount = parseFloat(document.getElementById('newInsAmount').value);
+    if(!name || !amount){ showToast('名前と金額を入力してください'); return; }
+    collectLifeplanFormValues();
+    p.insurances.push({ id: uid(), name, annualPremium: amount });
+    renderLifeplanSettingsPage();
+  };
+  document.getElementById('btnAddInvestment').onclick = ()=>{
+    const type = document.getElementById('newInvType').value;
+    const name = document.getElementById('newInvName').value.trim();
+    const amount = parseFloat(document.getElementById('newInvAmount').value);
+    const rate = parseFloat(document.getElementById('newInvRate').value) || 0;
+    if(!amount || amount <= 0){ showToast('積立額を入力してください'); return; }
+    collectLifeplanFormValues();
+    p.investments.push({ id: uid(), type, name, monthlyAmount: amount, returnRate: rate });
+    renderLifeplanSettingsPage();
+  };
+  document.getElementById('btnAddEvent').onclick = ()=>{
+    const name = document.getElementById('newEvName').value.trim();
+    const year = parseInt(document.getElementById('newEvYear').value);
+    const amount = parseFloat(document.getElementById('newEvAmount').value);
+    if(!name || !year || !amount){ showToast('名前・年・金額を入力してください'); return; }
+    collectLifeplanFormValues();
+    p.otherEvents.push({ id: uid(), name, year, amount });
+    renderLifeplanSettingsPage();
+  };
+
+  wireChildEduCards();
+  wireIncomeCard('self');
+  wireIncomeCard('spouse');
+
+  document.getElementById('lpSaveBtn').onclick = ()=>{
+    collectLifeplanFormValues();
+    persistLifeplan();
+    lifeplanView = 'dashboard';
+    showToast('ライフプラン設定を保存しました');
+    renderLifeplanTab();
+  };
+}
+
+/* フォーム上の未保存の値を lifeplan オブジェクトへ反映する。
+   一覧への追加・削除はモーダル全体を再描画するため、その前に必ず
+   呼び出して、他の項目に入力中の値が消えないようにする。 */
+function collectLifeplanFormValues(){
+  const p = lifeplan;
+  const val = (id) => document.getElementById(id);
+  if(!val('lpMortgageBalance')) return;
+  p.currentAge = parseInt(val('lpAge').value) || null;
+  p.inflationRate = parseFloat(val('lpInflation').value) || 0;
+  p.baseline.monthlyExpense = parseFloat(val('lpBaselineExpense').value) || 0;
+  ['self','spouse'].forEach(personKey=>{
+    const prefix = 'lp' + (personKey==='self' ? 'Self' : 'Spouse');
+    const person = p.baseline[personKey];
+    if(!val(`${prefix}Income`)) return;
+    person.monthlyIncome = parseFloat(val(`${prefix}Income`).value) || 0;
+    person.incomeGrowthMode = val(`${prefix}GrowthMode`).value === 'fixed' ? 'fixed' : 'rate';
+    person.incomeGrowthRate = parseFloat(val(`${prefix}GrowthRate`).value) || 0;
+    person.incomeGrowthFixed = parseFloat(val(`${prefix}GrowthFixed`).value) || 0;
+  });
+  p.mortgage.balance = parseFloat(val('lpMortgageBalance').value) || 0;
+  p.mortgage.years = parseInt(val('lpMortgageYears').value) || 0;
+  p.mortgage.rate = parseFloat(val('lpMortgageRate').value) || 0;
+  p.realEstate.price = parseFloat(val('lpRePrice').value) || 0;
+  p.realEstate.appreciationRate = parseFloat(val('lpReRate').value) || 0;
+  p.retirement.pensionAnnual = parseFloat(val('lpPension').value) || 0;
+  p.retirement.livingCostAnnual = parseFloat(val('lpRetireLiving').value) || 0;
+  p.retirement.retireAge = parseInt(val('lpRetireAge').value) || 65;
+  p.retirementBonus.amount = parseFloat(val('lpRetireBonus').value) || 0;
+  p.retirementBonus.age = parseInt(val('lpRetireBonusAge').value) || 65;
+  p.car.cycleYears = parseInt(val('lpCarCycle').value) || 0;
+  p.car.cost = parseFloat(val('lpCarCost').value) || 0;
+}
+
+function removeInsurance(id){ collectLifeplanFormValues(); lifeplan.insurances = lifeplan.insurances.filter(x=>x.id!==id); renderLifeplanSettingsPage(); }
+function removeInvestment(id){ collectLifeplanFormValues(); lifeplan.investments = lifeplan.investments.filter(x=>x.id!==id); renderLifeplanSettingsPage(); }
+function removeOtherEvent(id){ collectLifeplanFormValues(); lifeplan.otherEvents = lifeplan.otherEvents.filter(x=>x.id!==id); renderLifeplanSettingsPage(); }
 
 /* =========================================================
    初回セットアップ（この端末を使うのは自分／配偶者どちらか選ぶ）
@@ -1186,6 +2254,8 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     if(btn.dataset.tab === 'ledger') renderLedgerTab();
+    else if(btn.dataset.tab === 'evaluation') renderEvaluationTab();
+    else if(btn.dataset.tab === 'lifeplan') renderLifeplanTab();
   });
 });
 
@@ -1199,6 +2269,7 @@ if(localStorage.getItem('kakeibo_current_person') === null){
 } else {
   renderAll();
 }
+pullFromGAS(); // 起動時にスプレッドシートの最新内容を取得（GAS URL未設定なら何もしない）
 </script>
 </body>
 </html>
