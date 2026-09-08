@@ -394,7 +394,7 @@ const DEFAULT_CATEGORIES = {
   income: ['給与','賞与','副業','その他収入']
 };
 const DEFAULT_PEOPLE = { self: '自分', spouse: '配偶者' };
-const DEFAULT_CONFIG = { gasUrl: '' };
+const DEFAULT_CONFIG = { gasUrl: '', gasSecret: '' };
 const LIFEPLAN_KEY = 'kakeibo_lifeplan_v1';
 
 /* 教育費の目安（年額・円）。あくまで一般的な統計に基づく参考値で、自由に上書き可能。 */
@@ -512,7 +512,7 @@ async function syncToGAS(action, payload){
     const res = await fetch(config.gasUrl, {
       method:'POST',
       headers:{ 'Content-Type':'text/plain' },
-      body: JSON.stringify({ action, payload })
+      body: JSON.stringify({ action, payload, secret: config.gasSecret || '' })
     });
     return await res.json().catch(()=>({status:'ok'}));
   }catch(e){
@@ -531,7 +531,8 @@ async function syncToGAS(action, payload){
 async function pullFromGAS(){
   if(!config.gasUrl) return;
   try{
-    const res = await fetch(config.gasUrl, { method:'GET' });
+    const url = config.gasUrl + '?secret=' + encodeURIComponent(config.gasSecret || '');
+    const res = await fetch(url, { method:'GET' });
     const data = await res.json();
     if(Array.isArray(data.entries)){
       // GAS/スプレッドシート側で日付が Date 型に自動変換され、
@@ -2000,9 +2001,11 @@ function openSettingsModal(){
           <h4>Google Apps Script 連携（任意・後で設定可）</h4>
           <label>GAS Web App URL</label>
           <input type="text" id="gasUrlInput" value="${escapeAttr(config.gasUrl)}" placeholder="https://script.google.com/macros/s/.../exec">
+          <label>合言葉（GAS側のSECRET_KEYと同じ文字列）</label>
+          <input type="text" id="gasSecretInput" value="${escapeAttr(config.gasSecret||'')}" placeholder="合言葉を入力">
           <div class="sync-status">
             未設定の間はローカル保存のみで動作します（<code>console.log</code>に同期予定の内容を出力する疎通確認ダミー）。<br>
-            GASのWebアプリを公開したら、ここにURLを貼るだけで書き込みが有効になります。
+            GASのWebアプリを公開したら、URLと合言葉をここに貼るだけで書き込みが有効になります。
           </div>
         </div>
 
@@ -2028,6 +2031,7 @@ function openSettingsModal(){
     people.self = document.getElementById('nameSelf').value.trim() || '自分';
     people.spouse = document.getElementById('nameSpouse').value.trim() || '配偶者';
     config.gasUrl = document.getElementById('gasUrlInput').value.trim();
+    config.gasSecret = document.getElementById('gasSecretInput').value.trim();
     persistPeople(); persistCategories(); persistConfig();
     closeModal();
     showToast('設定を保存しました');

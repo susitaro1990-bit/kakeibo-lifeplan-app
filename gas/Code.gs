@@ -16,8 +16,21 @@
 var ENTRY_HEADERS = ['id', 'date', 'person', 'type', 'category', 'amount', 'memo', 'fixedId', 'createdAt'];
 var SETTINGS_HEADERS = ['key', 'value', 'updatedAt'];
 
+// アプリとこのGASを結ぶ「合言葉」。ここにはダミーの値だけを置いています。
+// 実際に使う本物の合言葉は、Apps Scriptのこの編集画面（Googleアカウントで
+// ログインした人しか見えない場所）で直接書き換えてください。
+// このファイル（GitHub上で公開しているコピー）には、本物の値をコミットしないこと。
+var SECRET_KEY = 'REPLACE_WITH_YOUR_OWN_SECRET';
+
+function checkSecret_(key) {
+  return key === SECRET_KEY;
+}
+
 function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!checkSecret_(e.parameter.secret)) {
+    return jsonOutput_({ status: 'error', error: 'unauthorized' });
+  }
   var payload = {
     status: 'ok',
     entries: readEntries_(ss),
@@ -35,6 +48,10 @@ function doPost(e) {
     return jsonOutput_({ status: 'error', error: 'invalid JSON body' });
   }
 
+  if (!checkSecret_(body.secret)) {
+    return jsonOutput_({ status: 'error', error: 'unauthorized' });
+  }
+
   var action = body.action;
   var payload = body.payload || {};
 
@@ -49,7 +66,7 @@ function doPost(e) {
       deleteEntry_(ss, payload.id);
       break;
     case 'setState':
-      setState_(ss, body.key, body.value);
+      setState_(ss, payload.key, payload.value);
       break;
     default:
       return jsonOutput_({ status: 'error', error: 'unknown action: ' + action });
@@ -180,14 +197,17 @@ function jsonOutput_(obj) {
  * 2. メニューの「拡張機能」→「Apps Script」を開く。
  * 3. デフォルトで開かれる Code.gs の中身を全部消して、このファイルの
  *    内容を丸ごと貼り付ける。
+ * 3.5. 貼り付けたコードの中の SECRET_KEY を、自分だけの合言葉（長くて
+ *    ランダムな文字列）に書き換える。※このファイルをGitHubに置く場合は
+ *    ダミーの値のままコミットし、本物の値は貼り付け先の編集画面だけに残す。
  * 4. 画面右上の「デプロイ」→「新しいデプロイ」をクリック。
  * 5. 歯車アイコンから種類を「ウェブアプリ」に設定。
  *      - 実行するユーザー: 自分
  *      - アクセスできるユーザー: 全員
  *    にして「デプロイ」。初回は権限の承認を求められるので許可する。
  * 6. 発行された「ウェブアプリの URL」（.../exec で終わるもの）をコピー。
- * 7. 家計簿アプリ側の右上「設定」→「Google Apps Script 連携」欄に
- *    その URL を貼り付けて保存すれば連携完了。
+ * 7. 家計簿アプリ側の右上「設定」→「Google Apps Script 連携」欄に、
+ *    その URL と、3.5で決めた合言葉を貼り付けて保存すれば連携完了。
  *
  * ※ コードを後から修正した場合は、「デプロイ」→「デプロイを管理」→
  *    鉛筆アイコンで「新しいバージョン」を選んで再デプロイしないと
