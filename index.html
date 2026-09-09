@@ -436,6 +436,24 @@ function defaultPersonIncome(){
   return { monthlyIncome: 0, incomeGrowthMode: 'rate', incomeGrowthRate: 1, incomeGrowthFixed: 0, leaves: [] };
 }
 
+/* 生活費まわりの内訳。baseline.monthlyExpense（基本生活費）とは別に、
+   お小遣い・子供関連・介護・仕送り・冠婚葬祭などを個別に持つ。
+   子供の生活費・お小遣いは「子供が独立する年齢」に達すると自動的に
+   計算から外れるため、将来の独立に伴う支出減少をここで表現できる。 */
+function defaultExpenses(){
+  return {
+    selfAllowance: 0,
+    spouseAllowance: 0,
+    childAllowancePerChild: 0,
+    childLivingCostPerChild: 0,
+    childIndependenceAge: 22,
+    contingencyMonthly: 0,
+    parentCare: { startAge: 0, annualCost: 0, years: 0 },
+    remittance: { monthlyAmount: 0, startAge: 0, endAge: 0 },
+    ceremonyAnnual: 0,
+  };
+}
+
 function defaultLifeplan(){
   return {
     currentAge: null,
@@ -445,6 +463,7 @@ function defaultLifeplan(){
       self: defaultPersonIncome(),
       spouse: defaultPersonIncome(),
     },
+    expenses: defaultExpenses(),
     mortgage: { balance: 0, years: 0, rate: 1.0 },
     realEstate: { price: 0, appreciationRate: 0 },
     retirement: { pensionAnnual: 0, livingCostAnnual: 0, retireAge: 65 },
@@ -487,6 +506,17 @@ function normalizeLifeplanBaseline(p){
     if(person.incomeGrowthFixed == null) person.incomeGrowthFixed = 0;
     if(!person.leaves) person.leaves = [];
   });
+  if(!p.expenses) p.expenses = defaultExpenses();
+  const ex = p.expenses;
+  if(ex.selfAllowance == null) ex.selfAllowance = 0;
+  if(ex.spouseAllowance == null) ex.spouseAllowance = 0;
+  if(ex.childAllowancePerChild == null) ex.childAllowancePerChild = 0;
+  if(ex.childLivingCostPerChild == null) ex.childLivingCostPerChild = 0;
+  if(ex.childIndependenceAge == null) ex.childIndependenceAge = 22;
+  if(ex.contingencyMonthly == null) ex.contingencyMonthly = 0;
+  if(!ex.parentCare) ex.parentCare = { startAge: 0, annualCost: 0, years: 0 };
+  if(!ex.remittance) ex.remittance = { monthlyAmount: 0, startAge: 0, endAge: 0 };
+  if(ex.ceremonyAnnual == null) ex.ceremonyAnnual = 0;
 }
 
 function loadJSON(key, fallback){
@@ -1288,6 +1318,16 @@ function educationExpenseForYear(year){
   return total;
 }
 
+/* 「子供が独立する年齢」未満の子供の人数。お小遣い・子供の生活費は
+   この人数に比例させることで、独立に伴う支出の減少を自動的に反映する。 */
+function activeChildrenCount(year){
+  const indAge = lifeplan.expenses.childIndependenceAge || 22;
+  return lifeplan.children.filter(c=>{
+    const age = year - c.birthYear;
+    return age >= 0 && age < indAge;
+  }).length;
+}
+
 function computeLifePlanProjection(){
   if(!lifeplan.currentAge) return null;
   const startYear = new Date().getFullYear();
@@ -1322,8 +1362,37 @@ function computeLifePlanProjection(){
       income += lifeplan.retirementBonus.amount;
     }
 
-    let baseLiving = isRetired ? lifeplan.retirement.livingCostAnnual : (lifeplan.baseline.monthlyExpense||0)*12;
+    const ex = lifeplan.expenses;
+    let baseLiving;
+    if(isRetired){
+      baseLiving = lifeplan.retirement.livingCostAnnual;
+    } else {
+      const nKids = activeChildrenCount(year);
+      const monthlyTotal = (lifeplan.baseline.monthlyExpense||0)
+        + (ex.selfAllowance||0) + (ex.spouseAllowance||0)
+        + nKids * ((ex.childAllowancePerChild||0) + (ex.childLivingCostPerChild||0))
+        + (ex.contingencyMonthly||0);
+      baseLiving = monthlyTotal * 12;
+    }
     baseLiving *= inflationFactor;
+
+    // 親の介護費用（自分の年齢が開始年齢に達してから、指定年数の間。0年＝期限なし）
+    let parentCareCost = 0;
+    if(ex.parentCare && ex.parentCare.annualCost > 0 && ex.parentCare.startAge > 0 && age >= ex.parentCare.startAge){
+      const years = ex.parentCare.years || 0;
+      if(years <= 0 || age < ex.parentCare.startAge + years){
+        parentCareCost = ex.parentCare.annualCost * inflationFactor;
+      }
+    }
+    // 実家などへの仕送り（開始年齢〜終了年齢。終了年齢0＝期限なし）
+    let remittanceCost = 0;
+    if(ex.remittance && ex.remittance.monthlyAmount > 0 && age >= (ex.remittance.startAge||0)){
+      const endAge = ex.remittance.endAge || 0;
+      if(endAge <= 0 || age <= endAge){
+        remittanceCost = ex.remittance.monthlyAmount * 12 * inflationFactor;
+      }
+    }
+    const ceremonyCost = (ex.ceremonyAnnual||0) * inflationFactor;
 
     let mortgageCost = 0;
     if(mortgageBalance > 0 && mortgageYearsLeft > 0){
@@ -1359,7 +1428,8 @@ function computeLifePlanProjection(){
     });
 
     const insuranceCost = insuranceAnnualTotal * inflationFactor;
-    const totalExpense = baseLiving + mortgageCost + carCost + eduCost + eventCost + insuranceCost;
+    const totalExpense = baseLiving + mortgageCost + carCost + eduCost + eventCost + insuranceCost
+      + parentCareCost + remittanceCost + ceremonyCost;
     const netCashFlow = income - totalExpense - investContribution;
     cash += netCashFlow;
 
@@ -1427,17 +1497,13 @@ function renderLifeplanDashboard(){
       </div>
 
       <div class="card">
-        <h2>年次収支の見通し</h2>
-        <div class="chart-wrap" id="lifeplanFlowChart"></div>
+        <h2>収支と資産の推移</h2>
+        <div class="sync-status" style="margin-bottom:6px;">上段の棒グラフが年ごとの収入・支出、下段の折れ線が資産の推移です（同じ年の軸を共有しています）。</div>
+        <div class="chart-wrap" id="lifeplanCombinedChart"></div>
         <div class="legend">
           <span><i style="background:var(--income)"></i>収入</span>
           <span><i style="background:var(--expense)"></i>支出</span>
         </div>
-      </div>
-
-      <div class="card">
-        <h2>資産推移</h2>
-        <div class="chart-wrap" id="lifeplanAssetChart"></div>
         <div class="asset-legend">${legendHtml}</div>
       </div>
 
@@ -1448,44 +1514,30 @@ function renderLifeplanDashboard(){
   document.getElementById('btnLifeplanSettings').onclick = openLifeplanSettings;
 
   if(lifeplanRows){
-    renderLifeplanFlowChart(lifeplanRows);
-    renderLifeplanAssetChart(lifeplanRows);
+    renderLifeplanCombinedChart(lifeplanRows);
     document.querySelectorAll('.asset-toggle').forEach(cb=>{
       cb.addEventListener('change', ()=>{
         lifeplan.visibleSeries[cb.dataset.key] = cb.checked;
         persistLifeplan();
-        renderLifeplanAssetChart(lifeplanRows);
+        renderLifeplanCombinedChart(lifeplanRows);
       });
     });
   }
 }
 
-function renderLifeplanFlowChart(rows){
-  const wrap = document.getElementById('lifeplanFlowChart');
+function renderLifeplanCombinedChart(rows){
+  const wrap = document.getElementById('lifeplanCombinedChart');
   if(!wrap) return;
   const barGroupW = 20;
   const w = Math.max(320, rows.length*barGroupW + 30);
-  const h = 180;
-  const padBottom = 22, padTop = 10;
-  const maxVal = Math.max(1, ...rows.map(r=>Math.max(r.income, r.expense)));
-  const scale = (h-padTop-padBottom)/maxVal;
-  let bars = '';
-  rows.forEach((r,i)=>{
-    const gx = 10 + i*barGroupW;
-    const incH = r.income*scale, expH = r.expense*scale;
-    bars += `
-      <g>
-        <rect x="${gx}" y="${h-padBottom-incH}" width="7" height="${Math.max(incH,0)}" fill="var(--income)" opacity="0.85"/>
-        <rect x="${gx+8}" y="${h-padBottom-expH}" width="7" height="${Math.max(expH,0)}" fill="var(--expense)" opacity="0.85"/>
-        ${i % 5 === 0 ? `<text x="${gx+7}" y="${h-6}" text-anchor="middle" class="axis-label">${r.year}</text>` : ''}
-      </g>`;
-  });
-  wrap.innerHTML = `<svg class="chart" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${bars}</svg>`;
-}
 
-function renderLifeplanAssetChart(rows){
-  const wrap = document.getElementById('lifeplanAssetChart');
-  if(!wrap) return;
+  // 上段：年ごとの収入・支出（棒グラフ）
+  const flowH = 120, flowPadTop = 10;
+  const maxFlow = Math.max(1, ...rows.map(r=>Math.max(r.income, r.expense)));
+  const flowScale = flowH/maxFlow;
+  const flowBaseY = flowPadTop + flowH;
+
+  // 下段：資産推移（折れ線）。上段と同じ横軸（年）を共有する。
   const seriesDefs = [
     { key:'cash', color: ASSET_SERIES_COLORS.cash, get:r=>r.cash },
     { key:'nisa_tsumitate', color: ASSET_SERIES_COLORS.nisa_tsumitate, get:r=>r.invest.nisa_tsumitate },
@@ -1496,25 +1548,42 @@ function renderLifeplanAssetChart(rows){
     { key:'total', color: ASSET_SERIES_COLORS.total, get:r=>r.totalAssets },
   ];
   const visible = seriesDefs.filter(s => lifeplan.visibleSeries[s.key]);
-  const maxVal = Math.max(1, ...rows.map(r=>Math.max(r.totalAssets, 0)));
-  const w = Math.max(320, rows.length*14 + 40);
-  const h = 220;
-  const padBottom = 22, padTop = 14, padLeft = 6;
-  const usable = h - padTop - padBottom;
-  const scaleY = v => h - padBottom - (Math.max(0,v)/maxVal) * usable;
-  const scaleX = i => padLeft + i*14;
+  const maxAsset = Math.max(1, ...rows.map(r=>Math.max(r.totalAssets, 0)));
+  const gap = 14, assetH = 150, padBottom = 22;
+  const assetTop = flowBaseY + gap;
+  const assetBaseY = assetTop + assetH;
+  const assetScaleY = v => assetBaseY - (Math.max(0,v)/maxAsset) * assetH;
+  const totalH = assetBaseY + padBottom;
+
+  const scaleX = i => 10 + i*barGroupW;
+
+  let bars = '';
+  rows.forEach((r,i)=>{
+    const gx = scaleX(i);
+    const incH = r.income*flowScale, expH = r.expense*flowScale;
+    bars += `
+      <rect x="${gx}" y="${flowBaseY-incH}" width="7" height="${Math.max(incH,0)}" fill="var(--income)" opacity="0.85"/>
+      <rect x="${gx+8}" y="${flowBaseY-expH}" width="7" height="${Math.max(expH,0)}" fill="var(--expense)" opacity="0.85"/>`;
+  });
 
   const linesHtml = visible.map(s=>{
-    const pts = rows.map((r,i)=> `${scaleX(i)},${scaleY(s.get(r))}`).join(' ');
+    const pts = rows.map((r,i)=> `${scaleX(i)+7},${assetScaleY(s.get(r))}`).join(' ');
     return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="${s.key==='total' ? 2.5 : 1.8}" opacity="${s.key==='total' ? 1 : 0.85}"/>`;
   }).join('');
 
   let labels = '';
   rows.forEach((r,i)=>{
-    if(i % 5 === 0) labels += `<text x="${scaleX(i)}" y="${h-6}" text-anchor="middle" class="axis-label">${r.year}</text>`;
+    if(i % 5 === 0) labels += `<text x="${scaleX(i)+7}" y="${totalH-6}" text-anchor="middle" class="axis-label">${r.year}</text>`;
   });
 
-  wrap.innerHTML = `<svg class="chart" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${linesHtml}${labels}</svg>`;
+  const dividerY = flowBaseY + gap/2;
+
+  wrap.innerHTML = `<svg class="chart" viewBox="0 0 ${w} ${totalH}" width="${w}" height="${totalH}">
+    ${bars}
+    <line x1="0" y1="${dividerY}" x2="${w}" y2="${dividerY}" stroke="var(--border)" stroke-width="1"/>
+    ${linesHtml}
+    ${labels}
+  </svg>`;
 }
 
 function renderChildEduCard(child){
@@ -1734,14 +1803,52 @@ function renderLifeplanSettingsPage(){
         </div>
       </div>
       <div class="form-row">
-        <div><label>月あたりの支出（世帯合計の基準値）</label><input type="number" id="lpBaselineExpense" value="${p.baseline.monthlyExpense||''}" placeholder="0"></div>
+        <div><label>基本生活費（月額・食費や住居費、水道光熱費など）</label><input type="number" id="lpBaselineExpense" value="${p.baseline.monthlyExpense||''}" placeholder="0"></div>
       </div>
-      <div class="sync-status">支出は世帯合計の基準値です。収入は下で自分・配偶者それぞれ入力し、合算してシミュレーションします（いずれも家計簿の実績とは連動しません）。<br>
+      <div class="sync-status">収入は下で自分・配偶者それぞれ入力し、合算してシミュレーションします（いずれも家計簿の実績とは連動しません）。<br>
       税金・社会保険料の詳細計算はせず、「手取り」を直接入力する簡易方式です。リタイア後は世帯の年金額に切り替わります（年金額もインフレ率にあわせて実質的な目減りを考慮します）。</div>
     </div>
 
     ${renderIncomeCard('self')}
     ${renderIncomeCard('spouse')}
+
+    <div class="card">
+      <h2>生活費の内訳</h2>
+      <div class="form-row">
+        <div><label>自分のお小遣い（月額）</label><input type="number" id="lpSelfAllowance" value="${p.expenses.selfAllowance||''}" placeholder="0"></div>
+        <div><label>配偶者のお小遣い（月額）</label><input type="number" id="lpSpouseAllowance" value="${p.expenses.spouseAllowance||''}" placeholder="0"></div>
+      </div>
+      <div class="form-row">
+        <div><label>子供1人あたりのお小遣い（月額）</label><input type="number" id="lpChildAllowance" value="${p.expenses.childAllowancePerChild||''}" placeholder="0"></div>
+        <div><label>子供1人あたりの生活費（月額）</label><input type="number" id="lpChildLiving" value="${p.expenses.childLivingCostPerChild||''}" placeholder="0"></div>
+      </div>
+      <div class="form-row">
+        <div><label>子供が独立する年齢</label><input type="number" id="lpChildIndependenceAge" value="${p.expenses.childIndependenceAge}" placeholder="22"></div>
+        <div><label>予備費（月額）</label><input type="number" id="lpContingency" value="${p.expenses.contingencyMonthly||''}" placeholder="0"></div>
+      </div>
+      <div class="sync-status">子供のお小遣い・生活費は、その時点で「独立する年齢」未満の子供の人数に応じて自動計算されます。子供が独立するとその分の支出が自動的に減ります。</div>
+    </div>
+
+    <div class="card">
+      <h2>介護・仕送り・冠婚葬祭</h2>
+      <div class="form-row">
+        <div><label>親の介護費用が始まる年齢（自分）</label><input type="number" id="lpParentCareStartAge" value="${p.expenses.parentCare.startAge||''}" placeholder="例）75"></div>
+        <div><label>介護費用（年額）</label><input type="number" id="lpParentCareAmount" value="${p.expenses.parentCare.annualCost||''}" placeholder="0"></div>
+      </div>
+      <div class="form-row">
+        <div><label>介護費用が続く年数（0＝期限なし）</label><input type="number" id="lpParentCareYears" value="${p.expenses.parentCare.years||''}" placeholder="0"></div>
+      </div>
+      <div class="form-row">
+        <div><label>実家等への仕送り（月額）</label><input type="number" id="lpRemittanceAmount" value="${p.expenses.remittance.monthlyAmount||''}" placeholder="0"></div>
+      </div>
+      <div class="form-row">
+        <div><label>仕送りを始める年齢（自分）</label><input type="number" id="lpRemittanceStartAge" value="${p.expenses.remittance.startAge||''}" placeholder="0"></div>
+        <div><label>仕送りを終える年齢（0＝期限なし）</label><input type="number" id="lpRemittanceEndAge" value="${p.expenses.remittance.endAge||''}" placeholder="0"></div>
+      </div>
+      <div class="form-row">
+        <div><label>冠婚葬祭費（年額の目安）</label><input type="number" id="lpCeremony" value="${p.expenses.ceremonyAnnual||''}" placeholder="0"></div>
+      </div>
+    </div>
 
     <div class="card">
       <h2>住宅ローン</h2>
@@ -1905,6 +2012,19 @@ function collectLifeplanFormValues(){
     person.incomeGrowthRate = parseFloat(val(`${prefix}GrowthRate`).value) || 0;
     person.incomeGrowthFixed = parseFloat(val(`${prefix}GrowthFixed`).value) || 0;
   });
+  p.expenses.selfAllowance = parseFloat(val('lpSelfAllowance').value) || 0;
+  p.expenses.spouseAllowance = parseFloat(val('lpSpouseAllowance').value) || 0;
+  p.expenses.childAllowancePerChild = parseFloat(val('lpChildAllowance').value) || 0;
+  p.expenses.childLivingCostPerChild = parseFloat(val('lpChildLiving').value) || 0;
+  p.expenses.childIndependenceAge = parseInt(val('lpChildIndependenceAge').value) || 22;
+  p.expenses.contingencyMonthly = parseFloat(val('lpContingency').value) || 0;
+  p.expenses.parentCare.startAge = parseInt(val('lpParentCareStartAge').value) || 0;
+  p.expenses.parentCare.annualCost = parseFloat(val('lpParentCareAmount').value) || 0;
+  p.expenses.parentCare.years = parseInt(val('lpParentCareYears').value) || 0;
+  p.expenses.remittance.monthlyAmount = parseFloat(val('lpRemittanceAmount').value) || 0;
+  p.expenses.remittance.startAge = parseInt(val('lpRemittanceStartAge').value) || 0;
+  p.expenses.remittance.endAge = parseInt(val('lpRemittanceEndAge').value) || 0;
+  p.expenses.ceremonyAnnual = parseFloat(val('lpCeremony').value) || 0;
   p.mortgage.balance = parseFloat(val('lpMortgageBalance').value) || 0;
   p.mortgage.years = parseInt(val('lpMortgageYears').value) || 0;
   p.mortgage.rate = parseFloat(val('lpMortgageRate').value) || 0;
