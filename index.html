@@ -430,6 +430,7 @@ const INVESTMENT_TYPES = {
   nisa_growth: '成長投資枠',
   ideco: 'iDeCo',
   taxable: '課税投資枠',
+  child_nisa: '子供名義の資産',
 };
 const ASSET_SERIES_COLORS = {
   cash: '#3f7a5c',
@@ -437,6 +438,7 @@ const ASSET_SERIES_COLORS = {
   nisa_growth: '#7a5fae',
   ideco: '#c1573f',
   taxable: '#c2578b',
+  child_nisa: '#4f8f6f',
   realEstate: '#5f7a3f',
   total: '#1f2a24',
 };
@@ -484,6 +486,7 @@ function defaultLifeplan(){
   return {
     currentAge: null,
     inflationRate: 2,
+    initialCash: 0, // シミュレーション開始時点の貯金額
     baseline: {
       monthlyExpense: 0,
       self: defaultPersonIncome(),
@@ -513,6 +516,7 @@ function defaultLifeplan(){
    自分／配偶者それぞれの収入を持つ baseline.self / baseline.spouse
    構造へ移行する処理も兼ねる。 */
 function normalizeLifeplanBaseline(p){
+  if(p.initialCash == null) p.initialCash = 0;
   if(!p.baseline) p.baseline = { monthlyExpense: 0, self: defaultPersonIncome(), spouse: defaultPersonIncome() };
   const b = p.baseline;
   if(!b.self){
@@ -1378,9 +1382,9 @@ function computeLifePlanProjection(){
   let mortgageYearsLeft = lifeplan.mortgage.years;
 
   let realEstateValue = lifeplan.realEstate.price;
-  let cash = 0;
+  let cash = lifeplan.initialCash || 0;
   const invBalances = {};
-  lifeplan.investments.forEach(inv => invBalances[inv.id] = 0);
+  lifeplan.investments.forEach(inv => invBalances[inv.id] = inv.startingBalance || 0);
   const insuranceAnnualTotal = lifeplan.insurances.reduce((s,i)=> s + (i.annualPremium||0), 0);
 
   const rows = [];
@@ -1461,7 +1465,7 @@ function computeLifePlanProjection(){
     lifeplan.otherEvents.forEach(ev=>{ if(ev.year === year) eventCost += ev.amount; });
 
     let investContribution = 0;
-    const investTotals = { nisa_tsumitate:0, nisa_growth:0, ideco:0, taxable:0 };
+    const investTotals = { nisa_tsumitate:0, nisa_growth:0, ideco:0, taxable:0, child_nisa:0 };
     lifeplan.investments.forEach(inv=>{
       const annualAmount = isRetired ? 0 : (inv.monthlyAmount||0) * 12;
       invBalances[inv.id] = invBalances[inv.id] * (1 + (inv.returnRate||0)/100) + annualAmount;
@@ -1478,7 +1482,7 @@ function computeLifePlanProjection(){
     // 資産＝貯金（現金）＋株式等の投資額の合計。不動産（マンション等）は
     // 評価額が不確実で流動性も低いため、あえて「資産」の合計には含めない
     // （不動産純資産は realEstateNet として別途保持し、参考値として扱う）。
-    const totalAssets = cash + investTotals.nisa_tsumitate + investTotals.nisa_growth + investTotals.ideco + investTotals.taxable;
+    const totalAssets = cash + investTotals.nisa_tsumitate + investTotals.nisa_growth + investTotals.ideco + investTotals.taxable + investTotals.child_nisa;
 
     rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired });
   }
@@ -1532,13 +1536,14 @@ function renderLifeplanDashboard(){
 
       <div class="card">
         <h2>収支と資産の推移</h2>
-        <div class="sync-status" style="margin-bottom:6px;">0円のラインを基準に、収入・支出を上向きに並べて表示し、資産（貯金＋株式等の投資額。不動産は含みません）を下向きに表示しています。</div>
+        <div class="sync-status" style="margin-bottom:6px;">0円のラインを基準に、収入・支出を上向きに並べて表示し、資産（貯金＋株式等の投資額。不動産は含みません）を下向きに表示しています。年の棒をタップすると、その年の正確な金額が下に表示されます。</div>
         <div class="chart-wrap" id="lifeplanCombinedChart"></div>
         <div class="legend">
           <span><i style="background:var(--income)"></i>収入</span>
           <span><i style="background:var(--expense)"></i>支出</span>
           <span><i style="background:${ASSET_SERIES_COLORS.total}"></i>資産（貯金＋投資）</span>
         </div>
+        <div class="sync-status" id="lifeplanYearDetail" style="margin-top:8px;text-align:center;">年の棒をタップすると、詳しい金額がここに表示されます。</div>
       </div>
 
       <button type="button" class="cancel-btn" id="btnLifeplanSettings" style="width:100%;margin-bottom:16px;">設定を編集する（年齢・住宅ローン・教育費・投資枠など）</button>
@@ -1552,16 +1557,32 @@ function renderLifeplanDashboard(){
   }
 }
 
+/* 目盛りに使う「きりのいい」間隔を選ぶ（1・2・5・10 の倍率で最大値を3分割程度に）。 */
+function niceAxisStep(maxVal){
+  if(maxVal <= 0) return 10000;
+  const rough = maxVal / 3;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / mag;
+  const step = norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10;
+  return step * mag;
+}
+function fmtManYen(v){
+  return Math.round(v/10000).toLocaleString('ja-JP') + '万円';
+}
+
 /* 0円のラインを基準に、収入・支出を上向きに並べて表示し、資産（貯金＋株式等の
    投資額。不動産は含めない）を下向きに伸ばす棒グラフ。資産は何十年分もの
    累計額なので、1年分の収入・支出とは桁が大きく異なりやすい（支出を適切に
-   見積もっていれば、資産の伸びも現実的な範囲に収まりやすい）。 */
+   見積もっていれば、資産の伸びも現実的な範囲に収まりやすい）。
+   縦軸に目盛り（万円単位）を表示し、各年の棒をタップするとその年の
+   正確な金額を下の詳細欄に表示する。 */
 function renderLifeplanCombinedChart(rows){
   const wrap = document.getElementById('lifeplanCombinedChart');
   if(!wrap) return;
   const barGroupW = 22;
-  const w = Math.max(320, rows.length*barGroupW + 30);
-  const h = 240, padTop = 10, padBottom = 22;
+  const padLeft = 48, padTop = 10, padBottom = 22;
+  const w = Math.max(320, rows.length*barGroupW + padLeft + 14);
+  const h = 240;
   const usable = h - padTop - padBottom;
 
   const assetOf = r => r.totalAssets; // 貯金＋株式等の投資額の合計（不動産は含まない）
@@ -1570,9 +1591,9 @@ function renderLifeplanCombinedChart(rows){
   const scale = usable / (maxUp + maxDown);
   const zeroY = padTop + maxUp*scale;
 
-  const scaleX = i => 10 + i*barGroupW;
+  const scaleX = i => padLeft + i*barGroupW;
 
-  let bars = '';
+  let bars = '', hitAreas = '';
   rows.forEach((r,i)=>{
     const gx = scaleX(i);
     const incH = Math.max(0, r.income)*scale;
@@ -1582,6 +1603,7 @@ function renderLifeplanCombinedChart(rows){
       <rect x="${gx}" y="${zeroY-incH}" width="7" height="${incH}" fill="var(--income)" opacity="0.85"/>
       <rect x="${gx+8}" y="${zeroY-expH}" width="7" height="${expH}" fill="var(--expense)" opacity="0.85"/>
       <rect x="${gx}" y="${zeroY}" width="15" height="${assetH}" fill="${ASSET_SERIES_COLORS.total}" opacity="0.85"/>`;
+    hitAreas += `<rect class="lp-bar-hit" data-i="${i}" x="${gx-3}" y="${padTop}" width="${barGroupW}" height="${usable}" fill="transparent" style="cursor:pointer;"/>`;
   });
 
   let labels = '';
@@ -1589,11 +1611,55 @@ function renderLifeplanCombinedChart(rows){
     if(i % 5 === 0) labels += `<text x="${scaleX(i)+7}" y="${h-6}" text-anchor="middle" class="axis-label">${r.year}</text>`;
   });
 
+  // 縦軸の目盛り（0円のラインから上＝収入・支出、下＝資産、それぞれ独立した縮尺）。
+  // 上下で桁が大きく異なる場合、細かい目盛りが密集して文字が重なってしまうため、
+  // 直前に描いたラベルと十分な間隔（フォントの高さ以上）が空くものだけを描画する。
+  const MIN_LABEL_GAP = 11;
+  let axis = `<text x="${padLeft-6}" y="${zeroY+3}" text-anchor="end" class="axis-label">0円</text>`;
+  let lastLabelY = zeroY;
+  const upStep = niceAxisStep(maxUp);
+  for(let v=upStep; v<=maxUp*1.02; v+=upStep){
+    const y = zeroY - v*scale;
+    if(Math.abs(lastLabelY - y) < MIN_LABEL_GAP) continue;
+    axis += `<line x1="${padLeft}" y1="${y}" x2="${w}" y2="${y}" stroke="var(--border)" stroke-width="1" stroke-dasharray="2,3"/>`;
+    axis += `<text x="${padLeft-6}" y="${y+3}" text-anchor="end" class="axis-label">${fmtManYen(v)}</text>`;
+    lastLabelY = y;
+  }
+  lastLabelY = zeroY;
+  const downStep = niceAxisStep(maxDown);
+  for(let v=downStep; v<=maxDown*1.02; v+=downStep){
+    const y = zeroY + v*scale;
+    if(Math.abs(lastLabelY - y) < MIN_LABEL_GAP) continue;
+    axis += `<line x1="${padLeft}" y1="${y}" x2="${w}" y2="${y}" stroke="var(--border)" stroke-width="1" stroke-dasharray="2,3"/>`;
+    axis += `<text x="${padLeft-6}" y="${y+3}" text-anchor="end" class="axis-label">${fmtManYen(v)}</text>`;
+    lastLabelY = y;
+  }
+
   wrap.innerHTML = `<svg class="chart" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
+    ${axis}
     ${bars}
-    <line x1="0" y1="${zeroY}" x2="${w}" y2="${zeroY}" stroke="var(--text-dim)" stroke-width="1"/>
+    <line x1="${padLeft}" y1="${zeroY}" x2="${w}" y2="${zeroY}" stroke="var(--text-dim)" stroke-width="1"/>
     ${labels}
+    ${hitAreas}
   </svg>`;
+
+  wrap.querySelectorAll('.lp-bar-hit').forEach(el=>{
+    el.addEventListener('click', ()=> showLifeplanYearDetail(rows[+el.dataset.i]));
+  });
+}
+
+/* 棒グラフの年をタップしたときに、その年の正確な金額を内訳付きで表示する。 */
+function showLifeplanYearDetail(r){
+  const box = document.getElementById('lifeplanYearDetail');
+  if(!box) return;
+  const investParts = Object.keys(INVESTMENT_TYPES)
+    .filter(k => r.invest[k])
+    .map(k => `${INVESTMENT_TYPES[k]} ${fmtYen(r.invest[k])}`);
+  const breakdown = [`貯金 ${fmtYen(r.cash)}`, ...investParts].join('・');
+  box.innerHTML = `
+    <strong>${r.year}年（${r.age}歳）${r.isRetired ? '・リタイア後' : ''}</strong><br>
+    収入 ${fmtYen(r.income)}　支出 ${fmtYen(r.expense)}<br>
+    資産合計 ${fmtYen(r.totalAssets)}（${breakdown}）`;
 }
 
 function renderChildEduCard(child){
@@ -1985,6 +2051,7 @@ function renderLifeplanSettingsPage(){
       <div class="main">
         <div class="cat">${escapeHtml(inv.name || INVESTMENT_TYPES[inv.type])}<span class="fixed-type income">${INVESTMENT_TYPES[inv.type]}</span></div>
         <div class="meta">月${fmtYen(inv.monthlyAmount)} ・ 想定利回り 年${inv.returnRate}%</div>
+        <div class="meta" style="display:flex;align-items:center;gap:6px;margin-top:4px;">現在の残高 <input type="number" class="inv-balance-input" data-inv="${inv.id}" value="${inv.startingBalance||''}" placeholder="0" style="width:120px;"></div>
       </div>
       <button class="del" title="削除" onclick="removeInvestment('${inv.id}')">✕</button>
     </div>
@@ -2004,6 +2071,9 @@ function renderLifeplanSettingsPage(){
           <label>インフレ率（年率 %）</label>
           <input type="number" id="lpInflation" step="0.1" value="${p.inflationRate}">
         </div>
+      </div>
+      <div class="form-row">
+        <div><label>現在の貯金額（シミュレーション開始時点）</label><input type="number" id="lpInitialCash" value="${p.initialCash||''}" placeholder="0"></div>
       </div>
       <div class="sync-status">収入は下で自分・配偶者それぞれ入力し、合算してシミュレーションします（いずれも家計簿の実績とは連動しません）。<br>
       税金・社会保険料の詳細計算はせず、「手取り」を直接入力する簡易方式です。リタイア後は世帯の年金額に切り替わります（年金額もインフレ率にあわせて実質的な目減りを考慮します）。</div>
@@ -2045,13 +2115,17 @@ function renderLifeplanSettingsPage(){
             <option value="nisa_growth">成長投資枠</option>
             <option value="ideco">iDeCo</option>
             <option value="taxable">課税投資枠</option>
+            <option value="child_nisa">子供名義の資産</option>
           </select>
         </div>
-        <div><label>名称（任意）</label><input type="text" id="newInvName" placeholder="例）米国株口座"></div>
+        <div><label>名称（任意）</label><input type="text" id="newInvName" placeholder="例）長男名義"></div>
       </div>
       <div class="form-row">
         <div><label>月々の積立額</label><input type="number" id="newInvAmount" placeholder="30000"></div>
         <div><label>期待年率（%）</label><input type="number" step="0.1" id="newInvRate" placeholder="5"></div>
+      </div>
+      <div class="form-row">
+        <div><label>現在の残高（すでに貯まっている分）</label><input type="number" id="newInvBalance" placeholder="0"></div>
       </div>
       <button type="button" class="cancel-btn" id="btnAddInvestment" style="margin-top:8px;width:100%;">+ 積立枠を追加</button>
     </div>
@@ -2066,11 +2140,18 @@ function renderLifeplanSettingsPage(){
     const name = document.getElementById('newInvName').value.trim();
     const amount = parseFloat(document.getElementById('newInvAmount').value);
     const rate = parseFloat(document.getElementById('newInvRate').value) || 0;
+    const startingBalance = parseFloat(document.getElementById('newInvBalance').value) || 0;
     if(!amount || amount <= 0){ showToast('積立額を入力してください'); return; }
     collectLifeplanFormValues();
-    p.investments.push({ id: uid(), type, name, monthlyAmount: amount, returnRate: rate });
+    p.investments.push({ id: uid(), type, name, monthlyAmount: amount, returnRate: rate, startingBalance });
     renderLifeplanSettingsPage();
   };
+  document.querySelectorAll('.inv-balance-input').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const inv = p.investments.find(x=>x.id===inp.dataset.inv);
+      if(inv) inv.startingBalance = parseFloat(inp.value) || 0;
+    });
+  });
 
   wireIncomeCard('self');
   wireIncomeCard('spouse');
@@ -2094,6 +2175,7 @@ function collectLifeplanFormValues(){
   if(!val('lpMortgageBalance')) return;
   p.currentAge = parseInt(val('lpAge').value) || null;
   p.inflationRate = parseFloat(val('lpInflation').value) || 0;
+  p.initialCash = parseFloat(val('lpInitialCash').value) || 0;
   ['self','spouse'].forEach(personKey=>{
     const prefix = 'lp' + (personKey==='self' ? 'Self' : 'Spouse');
     const person = p.baseline[personKey];
