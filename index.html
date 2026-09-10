@@ -1499,12 +1499,45 @@ function openLifeplanSettings(){
   renderLifeplanTab();
 }
 
+/* 今後の「大きな支出を伴うライフイベント」を、直近の年から順に返す
+   （その他大きなイベント／車の買い替え／子供の入学）。過去分は除く。 */
+function computeUpcomingLifeEvents(){
+  if(!lifeplan.currentAge) return [];
+  const currentYear = new Date().getFullYear();
+  const events = [];
+
+  lifeplan.otherEvents.forEach(ev=>{
+    if(ev.year >= currentYear) events.push({ year: ev.year, label: ev.name, amount: ev.amount });
+  });
+
+  if(lifeplan.car.cycleYears > 0 && lifeplan.car.cost > 0){
+    events.push({ year: currentYear + lifeplan.car.cycleYears, label:'車の買い替え', amount: lifeplan.car.cost });
+    events.push({ year: currentYear + lifeplan.car.cycleYears*2, label:'車の買い替え', amount: lifeplan.car.cost });
+  }
+
+  lifeplan.children.forEach(child=>{
+    Object.keys(EDU_COST_REF).forEach(stageKey=>{
+      const stage = EDU_COST_REF[stageKey];
+      const year = child.birthYear + stage.startAge;
+      if(year < currentYear) return;
+      const choice = child.edu[stageKey] || 'public';
+      const override = child.eduCost && child.eduCost[stageKey];
+      const amount = (override != null && override > 0) ? override : stage[choice];
+      events.push({ year, label:`${child.name} ${stage.label}入学`, amount });
+    });
+  });
+
+  events.sort((a,b)=> a.year - b.year);
+  return events.slice(0, 2);
+}
+
 function renderLifeplanDashboard(){
   const main = document.getElementById('mainArea');
   lifeplanRows = computeLifePlanProjection();
 
-  const lastRow = lifeplanRows ? lifeplanRows[lifeplanRows.length-1] : null;
   const shortfallRow = lifeplanRows ? lifeplanRows.find(r => r.cash < 0) : null;
+  const upcomingEvents = lifeplanRows ? computeUpcomingLifeEvents() : [];
+  const currentYear = new Date().getFullYear();
 
   main.innerHTML = `
     ${!lifeplanRows ? `
@@ -1515,11 +1548,12 @@ function renderLifeplanDashboard(){
       </div>
     ` : `
       <div class="card">
-        <h2>100歳時点の総資産見込み</h2>
-        <div class="score-wrap">
-          <div class="score-num ${lastRow.totalAssets >= 0 ? 'good' : 'bad'}">${fmtYen(lastRow.totalAssets)}</div>
-          <div class="score-unit">${lastRow.year}年（${lastRow.age}歳）時点</div>
-        </div>
+        <h2>今後の大きな支出予定</h2>
+        ${upcomingEvents.length ? upcomingEvents.map(ev => `
+          <div class="score-comment" style="text-align:left;margin-bottom:6px;">
+            <strong>${ev.year}年（${lifeplan.currentAge + (ev.year - currentYear)}歳）</strong>　${escapeHtml(ev.label)}　${fmtYen(ev.amount)}
+          </div>
+        `).join('') : `<div class="empty-note">今後の大きな支出予定は登録されていません。</div>`}
       </div>
 
       <div class="card">
