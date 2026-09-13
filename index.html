@@ -85,18 +85,6 @@
   .icon-btn.spinning svg{animation:icon-spin .8s linear infinite;}
   @keyframes icon-spin{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
 
-  .person-select{
-    display:flex;gap:6px;background:var(--card);border:1px solid var(--border);
-    border-radius:10px;padding:3px;
-  }
-  .person-select button{
-    flex:1;border:none;background:none;padding:8px 6px;border-radius:8px;
-    font-size:13px;font-weight:600;color:var(--text-dim);cursor:pointer;
-    display:flex;align-items:center;justify-content:center;gap:6px;
-  }
-  .person-select button.active{
-    background:var(--accent-dim);color:var(--accent);
-  }
   .dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
 
   nav.tabs{
@@ -166,6 +154,7 @@
     flex:1;padding:9px;border:1px solid var(--border);border-radius:9px;background:#fbfcfb;
     font-weight:700;font-size:13px;color:var(--text-dim);cursor:pointer;
   }
+  .type-toggle button.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
   .type-toggle button.active.expense{background:#fbeae6;border-color:var(--expense);color:var(--expense);}
   .type-toggle button.active.income{background:#e9f3ee;border-color:var(--income);color:var(--income);}
 
@@ -378,7 +367,6 @@
         </button>
       </div>
     </div>
-    <div class="person-select" id="personSelect"></div>
     <nav class="tabs">
       <button class="tab-btn active" data-tab="ledger">家計簿入力</button>
       <button class="tab-btn" data-tab="evaluation">月次評価</button>
@@ -419,7 +407,7 @@ const DEFAULT_CATEGORIES = {
   expense: ['食費','日用品費','娯楽費','交通費','住居費','電気代','ガス代','水道代','医療費','教育費','保険料','その他'],
   income: ['給与','賞与','副業','その他収入']
 };
-const DEFAULT_PEOPLE = { self: '自分', spouse: '配偶者' };
+const DEFAULT_PEOPLE = { self: 'ホスト', spouse: 'ゲスト' };
 const DEFAULT_CONFIG = { gasUrl: '', gasSecret: '' };
 const LIFEPLAN_KEY = 'kakeibo_lifeplan_v1';
 
@@ -593,6 +581,12 @@ function saveJSON(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
 let entries = loadJSON(STORAGE_KEY, []);
 let categories = loadJSON(CATEGORY_KEY, DEFAULT_CATEGORIES);
 let people = loadJSON(PEOPLE_KEY, DEFAULT_PEOPLE);
+// 「自分」「配偶者」という旧デフォルト名のままなら、新しい既定の呼び方
+// （ホスト／ゲスト）に一度だけ引き継ぐ。名前を変更済みの場合は上書きしない。
+if(people.self === '自分' && people.spouse === '配偶者'){
+  people = { ...DEFAULT_PEOPLE };
+  saveJSON(PEOPLE_KEY, people);
+}
 let config = loadJSON(CONFIG_KEY, DEFAULT_CONFIG);
 let fixedCosts = loadJSON(FIXED_KEY, []); // [{id, type, person, category, amount, dayOfMonth, memo, startMonth}]
 let fixedLog = loadJSON(FIXED_LOG_KEY, {}); // { [fixedId]: ['YYYY-MM', ...] } 生成済み月の記録
@@ -824,25 +818,9 @@ function visibleEntries(){
 }
 
 /* =========================================================
-   レンダリング: person select
-   ========================================================= */
-function renderPersonSelect(){
-  const el = document.getElementById('personSelect');
-  el.innerHTML = '';
-  ['self','spouse'].forEach(p=>{
-    const btn = document.createElement('button');
-    btn.className = 'person-select-btn' + (state.currentPerson===p ? ' active':'');
-    btn.innerHTML = `<span class="dot" style="background:${personColor(p)}"></span>入力者: ${personName(p)}`;
-    btn.onclick = ()=> setCurrentPerson(p);
-    el.appendChild(btn);
-  });
-}
-
-/* =========================================================
    レンダリング: メインエリア（家計簿タブ）
    ========================================================= */
 function renderAll(){
-  renderPersonSelect();
   renderLedgerTab();
 }
 
@@ -935,7 +913,7 @@ function renderLedgerTab(){
 
   // view toggle
   const vt = document.getElementById('viewToggle');
-  const modes = [['self','自分のページ'],['spouse','配偶者のページ'],['combined','合算ビュー']];
+  const modes = [['self',personName('self')+'のページ'],['spouse',personName('spouse')+'のページ'],['combined','合算ビュー']];
   modes.forEach(([key,label])=>{
     const b = document.createElement('button');
     b.textContent = label;
@@ -2298,7 +2276,7 @@ function showPersonSetup(){
       <div class="modal" style="text-align:center;">
         <h3>ようこそ</h3>
         <p style="font-size:13px;color:var(--text-dim);line-height:1.6;margin:0 0 18px;">
-          この端末では、どちらとして使いますか？<br>あとから右上の切り替えでいつでも変更できます。
+          この端末では、どちらとして使いますか？<br>あとから「設定」画面でいつでも変更できます。
         </p>
         <div style="display:flex;flex-direction:column;gap:10px;">
           <button type="button" class="submit-btn" id="setupSelf" style="background:${themeColors.self}">${escapeHtml(people.self)}として使う</button>
@@ -2324,14 +2302,23 @@ function openSettingsModal(){
         <h3>設定</h3>
 
         <div class="field-group">
+          <h4>この端末の入力者</h4>
+          <div class="type-toggle">
+            <button type="button" id="setSelfBtn" class="${state.currentPerson==='self'?'active':''}">${escapeHtml(people.self)}</button>
+            <button type="button" id="setSpouseBtn" class="${state.currentPerson==='spouse'?'active':''}">${escapeHtml(people.spouse)}</button>
+          </div>
+          <div class="sync-status">最初に一度選んだら、以降はこの端末はその人として家計簿に記録します。間違えた場合や、端末を交代する場合はここで切り替えられます。</div>
+        </div>
+
+        <div class="field-group">
           <h4>利用者の名前</h4>
           <div class="name-edit-row">
             <span class="dot" style="background:var(--self-color)"></span>
-            <input type="text" id="nameSelf" value="${escapeAttr(people.self)}" placeholder="自分">
+            <input type="text" id="nameSelf" value="${escapeAttr(people.self)}" placeholder="ホスト">
           </div>
           <div class="name-edit-row">
             <span class="dot" style="background:var(--spouse-color)"></span>
-            <input type="text" id="nameSpouse" value="${escapeAttr(people.spouse)}" placeholder="配偶者">
+            <input type="text" id="nameSpouse" value="${escapeAttr(people.spouse)}" placeholder="ゲスト">
           </div>
         </div>
 
@@ -2395,6 +2382,8 @@ function openSettingsModal(){
   renderThemeSwatches('spouseSwatches', 'spouse');
   document.getElementById('selfCustomColor').oninput = (e)=> pickThemeColor('self', e.target.value);
   document.getElementById('spouseCustomColor').oninput = (e)=> pickThemeColor('spouse', e.target.value);
+  document.getElementById('setSelfBtn').onclick = ()=>{ closeModal(); setCurrentPerson('self'); };
+  document.getElementById('setSpouseBtn').onclick = ()=>{ closeModal(); setCurrentPerson('spouse'); };
   wireFixedSection();
 
   document.getElementById('addExpenseCat').onclick = ()=> addCategory('expense', 'newExpenseCat');
