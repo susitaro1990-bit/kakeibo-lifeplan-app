@@ -1621,6 +1621,10 @@ function niceAxisStep(maxVal){
   return step * mag;
 }
 function fmtManYen(v){
+  // 1億円以上は桁数が多くなりすぎるため「億円」表示に切り替える（小数第1位まで）。
+  if(Math.abs(v) >= 100000000){
+    return (v/100000000).toLocaleString('ja-JP', { maximumFractionDigits: 1 }) + '億円';
+  }
   return Math.round(v/10000).toLocaleString('ja-JP') + '万円';
 }
 
