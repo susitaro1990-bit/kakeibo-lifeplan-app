@@ -1595,7 +1595,7 @@ function renderLifeplanDashboard(){
         <div class="legend">
           <span><i style="background:var(--income)"></i>収入</span>
           <span><i style="background:var(--expense)"></i>支出</span>
-          <span><i style="background:${ASSET_SERIES_COLORS.total}"></i>資産（貯金＋投資）</span>
+          <span><i style="background:#fff;border:1.5px dashed ${ASSET_SERIES_COLORS.total};"></i>資産（貯金＋投資）</span>
         </div>
         <div class="sync-status" id="lifeplanYearDetail" style="margin-top:8px;text-align:center;">年の棒をタップすると、詳しい金額がここに表示されます。</div>
       </div>
@@ -1656,7 +1656,7 @@ function renderLifeplanCombinedChart(rows){
     bars += `
       <rect x="${gx}" y="${zeroY-incH}" width="7" height="${incH}" fill="var(--income)" opacity="0.85"/>
       <rect x="${gx+8}" y="${zeroY-expH}" width="7" height="${expH}" fill="var(--expense)" opacity="0.85"/>
-      <rect x="${gx}" y="${zeroY}" width="15" height="${assetH}" fill="${ASSET_SERIES_COLORS.total}" opacity="0.85"/>`;
+      <rect x="${gx}" y="${zeroY}" width="7" height="${assetH}" fill="#ffffff" stroke="${ASSET_SERIES_COLORS.total}" stroke-width="1.5" stroke-dasharray="3,2"/>`;
     hitAreas += `<rect class="lp-bar-hit" data-i="${i}" x="${gx-3}" y="${padTop}" width="${barGroupW}" height="${usable}" fill="transparent" style="cursor:pointer;"/>`;
   });
 
