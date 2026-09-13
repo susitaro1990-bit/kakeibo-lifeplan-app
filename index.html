@@ -560,6 +560,19 @@ function normalizeLifeplanBaseline(p){
   if(!ex.parentCare) ex.parentCare = { startAge: 0, annualCost: 0, years: 0 };
   if(!ex.remittance) ex.remittance = { monthlyAmount: 0, startAge: 0, endAge: 0 };
   if(ex.ceremonyAnnual == null) ex.ceremonyAnnual = 0;
+
+  // 配列・オブジェクト系のトップレベル項目も、欠けていれば安全な既定値で補う。
+  // GASからの取得データが古い形式だったり不完全だったりしても、
+  // 設定画面や集計処理が「undefined.map」等で落ちないようにするための保険。
+  if(!p.mortgage) p.mortgage = { balance: 0, years: 0, rate: 1.0 };
+  if(!p.realEstate) p.realEstate = { price: 0, appreciationRate: 0 };
+  if(!p.retirement) p.retirement = { pensionAnnual: 0, livingCostAnnual: 0, retireAge: 65 };
+  if(!p.retirementBonus) p.retirementBonus = { amount: 0, age: 65 };
+  if(!p.car) p.car = { cycleYears: 0, cost: 0 };
+  if(!Array.isArray(p.insurances)) p.insurances = [];
+  if(!Array.isArray(p.investments)) p.investments = [];
+  if(!Array.isArray(p.children)) p.children = [];
+  if(!Array.isArray(p.otherEvents)) p.otherEvents = [];
 }
 
 function loadJSON(key, fallback){
