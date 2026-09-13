@@ -1507,7 +1507,14 @@ function renderLifeplanTab(){
   else renderLifeplanDashboard();
 }
 
-function openLifeplanSettings(){
+/* 設定画面を開く前に、必ずスプレッドシート側の最新データを取得し直す。
+   ライフプランは夫婦で1つの共有データを丸ごと上書きする方式のため、
+   取得し直さずに古いデータのまま保存すると、相手が別の端末で入力した
+   内容を消してしまう事故につながる（実際に発生したため対策として追加）。 */
+async function openLifeplanSettings(){
+  if(config.gasUrl){
+    await pullFromGAS();
+  }
   lifeplanView = 'settings';
   renderLifeplanTab();
 }
