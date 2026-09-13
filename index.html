@@ -156,6 +156,11 @@
     font-size:14px;background:#fbfcfb;color:var(--text);font-family:inherit;
   }
   input:focus, select:focus, textarea:focus{outline:2px solid var(--accent-dim);border-color:var(--accent);}
+  .fixed-checkbox-row{
+    display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;
+    color:var(--text-dim);cursor:pointer;margin:0;
+  }
+  .fixed-checkbox-row input{width:15px;height:15px;flex-shrink:0;accent-color:var(--accent);cursor:pointer;}
   .type-toggle{display:flex;gap:6px;}
   .type-toggle button{
     flex:1;padding:9px;border:1px solid var(--border);border-radius:9px;background:#fbfcfb;
@@ -363,14 +368,6 @@
             <polyline points="23 4 23 10 17 10"></polyline>
             <polyline points="1 20 1 14 7 14"></polyline>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-          </svg>
-        </button>
-        <button class="icon-btn" id="btnFixed" title="固定費の管理">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="17 1 21 5 17 9"></polyline>
-            <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
-            <polyline points="7 23 3 19 7 15"></polyline>
-            <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
           </svg>
         </button>
         <button class="icon-btn" id="btnSettings" title="設定">
@@ -913,6 +910,12 @@ function renderLedgerTab(){
           <label>メモ（任意）</label>
           <input type="text" id="fMemo" placeholder="例）スーパーで食材">
         </div>
+        ${!editingEntry ? `
+        <label class="fixed-checkbox-row">
+          <input type="checkbox" id="fMakeFixed">
+          固定費として毎月自動入力する（家賃・保険料など）
+        </label>
+        ` : ''}
         <button type="submit" class="submit-btn">${editingEntry ? '更新する' : '記録する'}</button>
         ${editingEntry ? '<button type="button" class="cancel-btn" id="cancelEdit">編集をキャンセル</button>' : ''}
       </form>
@@ -1015,7 +1018,23 @@ function onSubmitEntry(ev){
     entries.push(entry);
     persistEntries();
     syncToGAS('addEntry', entry);
-    showToast('記録しました');
+
+    const makeFixed = document.getElementById('fMakeFixed')?.checked;
+    if(makeFixed){
+      // 今回入力した分はこの手入力そのものが「今月分」を兼ねるので、
+      // 固定費の自動生成は翌月分から始める（今月分が二重に記録されるのを防ぐ）。
+      const dayOfMonth = parseInt(date.split('-')[2], 10) || 1;
+      fixedCosts.push({
+        id: uid(), type: state.type, person: state.currentPerson,
+        category, amount, dayOfMonth, memo,
+        startMonth: nextMonth(monthKey(date))
+      });
+      persistFixed();
+      generateFixedEntries();
+      showToast('記録しました。来月以降も固定費として自動入力します');
+    } else {
+      showToast('記録しました');
+    }
   }
   state.selectedMonth = monthKey(date);
   renderLedgerTab();
@@ -2295,7 +2314,7 @@ function showPersonSetup(){
 /* =========================================================
    設定モーダル（費目管理・名前・GAS URL）
    ========================================================= */
-document.getElementById('btnSettings').addEventListener('click', openSettingsModal);
+document.getElementById('btnSettings').addEventListener('click', ()=>{ fixedEditingId = null; openSettingsModal(); });
 
 function openSettingsModal(){
   const root = document.getElementById('modalRoot');
@@ -2349,6 +2368,8 @@ function openSettingsModal(){
           </div>
         </div>
 
+        ${renderFixedSection()}
+
         <div class="field-group">
           <h4>Google Apps Script 連携（任意・後で設定可）</h4>
           <label>GAS Web App URL</label>
@@ -2374,6 +2395,7 @@ function openSettingsModal(){
   renderThemeSwatches('spouseSwatches', 'spouse');
   document.getElementById('selfCustomColor').oninput = (e)=> pickThemeColor('self', e.target.value);
   document.getElementById('spouseCustomColor').oninput = (e)=> pickThemeColor('spouse', e.target.value);
+  wireFixedSection();
 
   document.getElementById('addExpenseCat').onclick = ()=> addCategory('expense', 'newExpenseCat');
   document.getElementById('addIncomeCat').onclick = ()=> addCategory('income', 'newIncomeCat');
@@ -2391,7 +2413,7 @@ function openSettingsModal(){
   };
 }
 function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
-function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }
+function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; fixedEditingId = null; }
 
 function renderChips(containerId, type){
   const el = document.getElementById(containerId);
@@ -2463,21 +2485,14 @@ document.getElementById('btnSyncNow').addEventListener('click', async ()=>{
 });
 
 /* =========================================================
-   固定費モーダル（毎月自動入力される費用の登録・編集・削除）
+   固定費の管理（設定画面に組み込み）
+   登録（新規追加）は家計簿入力画面の「固定費として毎月自動入力する」
+   チェックボックスから行う。ここでは一覧の確認・編集・削除のみ扱う。
    ========================================================= */
-document.getElementById('btnFixed').addEventListener('click', openFixedModal);
+let fixedEditingId = null; // null=編集フォームなし、それ以外=そのIDを編集中
 
-let fixedEditingId = null; // null=一覧表示のみ, 'new'=新規追加中, それ以外=そのIDを編集中
-
-function openFixedModal(){
-  fixedEditingId = null;
-  renderFixedModal();
-}
-
-function renderFixedModal(){
-  const root = document.getElementById('modalRoot');
-  const showForm = fixedEditingId !== null;
-  const editing = (showForm && fixedEditingId !== 'new') ? fixedCosts.find(f=>f.id===fixedEditingId) : null;
+function renderFixedSection(){
+  const editing = fixedEditingId ? fixedCosts.find(f=>f.id===fixedEditingId) : null;
 
   const listHtml = fixedCosts.length ? fixedCosts.map(f=>`
     <div class="fixed-item">
@@ -2490,48 +2505,38 @@ function renderFixedModal(){
       <button class="edit-btn" title="編集" onclick="editFixed('${f.id}')">✎</button>
       <button class="del" title="削除" onclick="removeFixed('${f.id}')">✕</button>
     </div>
-  `).join('') : '<div class="empty-note">まだ固定費が登録されていません</div>';
+  `).join('') : '<div class="empty-note">まだ固定費が登録されていません。家計簿入力画面で「固定費として毎月自動入力する」にチェックを入れると、ここに追加されます。</div>';
 
-  root.innerHTML = `
-    <div class="modal-overlay" id="fixedModalOverlay">
-      <div class="modal">
-        <h3>固定費の管理</h3>
-        <div class="sync-status" style="margin-bottom:12px;">
-          家賃・電気代・保険料など毎月ほぼ同じ金額のものを登録すると、次回以降は自動で家計簿に記録されます。金額が変わったら「編集」してください（すでに記録済みの月は変わらず、今後の月から新しい金額が使われます）。
-        </div>
-        <div class="fixed-list">${listHtml}</div>
-        ${showForm ? renderFixedForm(editing) : '<button type="button" class="submit-btn" id="btnAddFixed" style="margin-top:12px;">+ 固定費を追加</button>'}
-        <div class="modal-close-row">
-          <button class="cancel-btn" id="fixedModalClose">閉じる</button>
-        </div>
+  return `
+    <div class="field-group">
+      <h4>固定費の管理</h4>
+      <div class="sync-status" style="margin-bottom:10px;">
+        家賃・電気代・保険料など、毎月ほぼ同じ金額のものが並びます。金額が変わったら「編集」してください（すでに記録済みの月は変わらず、今後の月から新しい金額が使われます）。
       </div>
+      <div class="fixed-list">${listHtml}</div>
+      ${editing ? renderFixedForm(editing) : ''}
     </div>
   `;
+}
 
-  document.getElementById('fixedModalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='fixedModalOverlay') closeModal(); });
-  document.getElementById('fixedModalClose').onclick = closeModal;
-
-  if(!showForm){
-    document.getElementById('btnAddFixed').onclick = ()=>{ fixedEditingId = 'new'; renderFixedModal(); };
-  } else {
-    wireFixedForm(editing);
-  }
+function wireFixedSection(){
+  const editing = fixedEditingId ? fixedCosts.find(f=>f.id===fixedEditingId) : null;
+  if(editing) wireFixedForm(editing);
 }
 
 function renderFixedForm(editing){
-  const type = editing ? editing.type : 'expense';
   return `
     <div class="card" style="margin-top:10px;padding:14px;">
       <div class="type-toggle" id="fixedTypeToggle">
-        <button type="button" data-type="expense" class="${type==='expense'?'active expense':''}">支出</button>
-        <button type="button" data-type="income" class="${type==='income'?'active income':''}">収入</button>
+        <button type="button" data-type="expense" class="${editing.type==='expense'?'active expense':''}">支出</button>
+        <button type="button" data-type="income" class="${editing.type==='income'?'active income':''}">収入</button>
       </div>
       <div class="form-row" style="margin-top:10px;">
         <div>
           <label>入力者</label>
           <select id="fixedPerson">
-            <option value="self" ${(!editing || editing.person==='self') ? 'selected':''}>${escapeHtml(people.self)}</option>
-            <option value="spouse" ${(editing && editing.person==='spouse') ? 'selected':''}>${escapeHtml(people.spouse)}</option>
+            <option value="self" ${editing.person==='self' ? 'selected':''}>${escapeHtml(people.self)}</option>
+            <option value="spouse" ${editing.person==='spouse' ? 'selected':''}>${escapeHtml(people.spouse)}</option>
           </select>
         </div>
         <div>
@@ -2542,20 +2547,20 @@ function renderFixedForm(editing){
       <div class="form-row">
         <div>
           <label>金額</label>
-          <input type="number" id="fixedAmount" min="0" step="1" value="${editing ? editing.amount : ''}" placeholder="0">
+          <input type="number" id="fixedAmount" min="0" step="1" value="${editing.amount}" placeholder="0">
         </div>
         <div>
           <label>毎月の日付</label>
-          <input type="number" id="fixedDay" min="1" max="31" value="${editing ? editing.dayOfMonth : 1}">
+          <input type="number" id="fixedDay" min="1" max="31" value="${editing.dayOfMonth}">
         </div>
       </div>
       <div>
         <label>メモ（任意）</label>
-        <input type="text" id="fixedMemo" value="${editing ? escapeAttr(editing.memo||'') : ''}" placeholder="例）住宅ローン返済">
+        <input type="text" id="fixedMemo" value="${escapeAttr(editing.memo||'')}" placeholder="例）住宅ローン返済">
       </div>
       <div class="modal-close-row" style="margin-top:12px;">
         <button type="button" class="cancel-btn" id="fixedFormCancel">キャンセル</button>
-        <button type="button" class="submit-btn" id="fixedFormSave">${editing ? '更新する' : '追加する'}</button>
+        <button type="button" class="submit-btn" id="fixedFormSave">更新する</button>
       </div>
     </div>
   `;
@@ -2564,11 +2569,11 @@ function renderFixedForm(editing){
 function wireFixedForm(editing){
   const typeToggle = document.getElementById('fixedTypeToggle');
   const catSel = document.getElementById('fixedCategory');
-  let curType = editing ? editing.type : 'expense';
+  let curType = editing.type;
 
   function fillCat(){
     fillCategoryOptions(catSel, curType);
-    if(editing && editing.type === curType) catSel.value = editing.category;
+    if(editing.type === curType) catSel.value = editing.category;
   }
   fillCat();
 
@@ -2583,7 +2588,7 @@ function wireFixedForm(editing){
     };
   });
 
-  document.getElementById('fixedFormCancel').onclick = ()=>{ fixedEditingId = null; renderFixedModal(); };
+  document.getElementById('fixedFormCancel').onclick = ()=>{ fixedEditingId = null; openSettingsModal(); };
   document.getElementById('fixedFormSave').onclick = ()=>{
     const amount = parseFloat(document.getElementById('fixedAmount').value);
     const day = Math.min(31, Math.max(1, parseInt(document.getElementById('fixedDay').value) || 1));
@@ -2594,30 +2599,21 @@ function wireFixedForm(editing){
       showToast('費目と金額を確認してください');
       return;
     }
-    if(editing){
-      Object.assign(editing, { type: curType, person, category, amount, dayOfMonth: day, memo });
-      persistFixed();
-      showToast('固定費を更新しました');
-    } else {
-      fixedCosts.push({
-        id: uid(), type: curType, person, category, amount, dayOfMonth: day, memo,
-        startMonth: todayStr().slice(0,7)
-      });
-      persistFixed();
-      showToast('固定費を追加しました');
-    }
+    Object.assign(editing, { type: curType, person, category, amount, dayOfMonth: day, memo });
+    persistFixed();
+    showToast('固定費を更新しました');
     fixedEditingId = null;
     generateFixedEntries();
-    renderFixedModal();
+    openSettingsModal();
     renderLedgerTab();
   };
 }
 
-function editFixed(id){ fixedEditingId = id; renderFixedModal(); }
+function editFixed(id){ fixedEditingId = id; openSettingsModal(); }
 function removeFixed(id){
   fixedCosts = fixedCosts.filter(f=>f.id!==id);
   persistFixed();
-  renderFixedModal();
+  openSettingsModal();
   showToast('固定費を削除しました（すでに記録済みの明細は残ります）');
 }
 
