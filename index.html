@@ -414,6 +414,17 @@ const DEFAULT_CATEGORIES = {
   income: ['給与','賞与','副業','その他収入']
 };
 const DEFAULT_PEOPLE = { self: 'ホスト', spouse: 'ゲスト' };
+// 「自分」「配偶者」という旧デフォルト名のままなら、新しい既定の呼び方
+// （ホスト／ゲスト）に引き継ぐ。名前を変更済みの場合は上書きしない。
+// スプレッドシート側に旧デフォルト名がまだ残っている場合、pullFromGAS() の
+// たびに巻き戻されてしまうため、ローカル読み込み時だけでなくサーバーから
+// 取得した値にも同じ移行処理をかける。
+function migratePeopleNames(p){
+  if(p && p.self === '自分' && p.spouse === '配偶者'){
+    return { ...DEFAULT_PEOPLE };
+  }
+  return p;
+}
 const DEFAULT_CONFIG = { gasUrl: '', gasSecret: '' };
 const LIFEPLAN_KEY = 'kakeibo_lifeplan_v1';
 
@@ -596,13 +607,8 @@ let categories = loadJSON(CATEGORY_KEY, DEFAULT_CATEGORIES);
   }
 });
 saveJSON(CATEGORY_KEY, categories);
-let people = loadJSON(PEOPLE_KEY, DEFAULT_PEOPLE);
-// 「自分」「配偶者」という旧デフォルト名のままなら、新しい既定の呼び方
-// （ホスト／ゲスト）に一度だけ引き継ぐ。名前を変更済みの場合は上書きしない。
-if(people.self === '自分' && people.spouse === '配偶者'){
-  people = { ...DEFAULT_PEOPLE };
-  saveJSON(PEOPLE_KEY, people);
-}
+let people = migratePeopleNames(loadJSON(PEOPLE_KEY, DEFAULT_PEOPLE));
+saveJSON(PEOPLE_KEY, people);
 let config = loadJSON(CONFIG_KEY, DEFAULT_CONFIG);
 let fixedCosts = loadJSON(FIXED_KEY, []); // [{id, type, person, category, amount, dayOfMonth, memo, startMonth}]
 let fixedLog = loadJSON(FIXED_LOG_KEY, {}); // { [fixedId]: ['YYYY-MM', ...] } 生成済み月の記録
@@ -663,7 +669,14 @@ async function pullFromGAS(){
       try{ setter(JSON.parse(st[key])); }catch(err){ console.error('failed to parse GAS state for', key, err); }
     };
     applyState('categories', v=>{ categories = v; saveJSON(CATEGORY_KEY, categories); });
-    applyState('people', v=>{ people = v; saveJSON(PEOPLE_KEY, people); });
+    applyState('people', v=>{
+      const migrated = migratePeopleNames(v);
+      people = migrated;
+      saveJSON(PEOPLE_KEY, people);
+      // スプレッドシート側がまだ旧デフォルト名だった場合は、次回以降も
+      // 巻き戻らないようにここで正しい値を書き戻しておく。
+      if(migrated !== v) syncState('people', people);
+    });
     applyState('fixedCosts', v=>{ fixedCosts = v; saveJSON(FIXED_KEY, fixedCosts); });
     applyState('fixedLog', v=>{ fixedLog = v; saveJSON(FIXED_LOG_KEY, fixedLog); });
     applyState('themeColors', v=>{ themeColors = v; saveJSON(THEME_KEY, themeColors); });
