@@ -82,6 +82,8 @@
   }
   .icon-btn svg{width:18px;height:18px;}
   .icon-btn:hover{background:var(--accent-dim);color:var(--accent);border-color:var(--accent);}
+  .icon-btn.spinning svg{animation:icon-spin .8s linear infinite;}
+  @keyframes icon-spin{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
 
   .person-select{
     display:flex;gap:6px;background:var(--card);border:1px solid var(--border);
@@ -356,6 +358,13 @@
         </div>
       </div>
       <div class="icon-group">
+        <button class="icon-btn" id="btnSyncNow" title="最新のデータを取得">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </button>
         <button class="icon-btn" id="btnFixed" title="固定費の管理">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="17 1 21 5 17 9"></polyline>
@@ -2432,6 +2441,26 @@ function addCategory(type, inputId){
   input.value = '';
   renderChips(type==='expense' ? 'expenseChips' : 'incomeChips', type);
 }
+
+/* =========================================================
+   手動同期ボタン（配偶者の端末での入力をすぐ確認したい時など、
+   アプリを閉じ直さなくても最新データを取得し直せるようにする）
+   ========================================================= */
+document.getElementById('btnSyncNow').addEventListener('click', async ()=>{
+  if(!config.gasUrl){
+    showToast('Google Apps Scriptとの連携が設定されていません（設定画面から連携できます）');
+    return;
+  }
+  const btn = document.getElementById('btnSyncNow');
+  btn.classList.add('spinning');
+  btn.disabled = true;
+  try{
+    await pullFromGAS();
+  } finally {
+    btn.classList.remove('spinning');
+    btn.disabled = false;
+  }
+});
 
 /* =========================================================
    固定費モーダル（毎月自動入力される費用の登録・編集・削除）
