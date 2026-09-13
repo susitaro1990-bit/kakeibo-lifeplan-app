@@ -29,6 +29,7 @@
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
+  html{overflow-y:scroll;scrollbar-gutter:stable;}
   body{
     background:var(--bg);
     color:var(--text);
@@ -88,15 +89,27 @@
   .dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
 
   nav.tabs{
-    display:flex;gap:4px;margin-top:10px;
+    display:flex;gap:2px;margin-top:10px;
+    border-bottom:1.5px solid var(--border);
   }
   nav.tabs button{
-    flex:1;padding:10px 4px;background:none;border:none;
+    flex:1;padding:10px 4px;background:transparent;
+    border:1px solid transparent;border-bottom:none;
+    border-radius:10px 10px 0 0;
     font-size:13px;font-weight:600;color:var(--text-dim);cursor:pointer;
-    border-bottom:2px solid transparent;
+    position:relative;
+    transition:background .15s,color .15s;
+  }
+  nav.tabs button:not(.active):hover{
+    background:rgba(63,122,92,0.07);color:var(--accent);
   }
   nav.tabs button.active{
-    color:var(--accent);border-bottom-color:var(--accent);
+    background:var(--card);
+    color:var(--accent);font-weight:800;
+    border-color:var(--border);
+    border-bottom:1.5px solid var(--card);
+    margin-bottom:-1.5px;
+    box-shadow:0 -2px 6px rgba(20,30,25,0.05);
   }
   nav.tabs button.disabled{
     color:#bfc7c2;cursor:default;
