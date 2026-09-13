@@ -404,7 +404,7 @@ const DEFAULT_THEME_COLORS = { self: '#3f7a5c', spouse: '#a9762c' };
 const THEME_PALETTE = ['#3f7a5c','#2f6f8f','#7a5fae','#c1573f','#c2578b','#2f8f8f','#a9762c','#5f7a3f'];
 
 const DEFAULT_CATEGORIES = {
-  expense: ['食費','日用品費','娯楽費','交通費','住居費','電気代','ガス代','水道代','医療費','教育費','保険料','その他'],
+  expense: ['食費','日用品費','被服及び履物費','美容費','娯楽費','交通費','住居費','電気代','ガス代','水道代','医療費','教育費','保険料','その他'],
   income: ['給与','賞与','副業','その他収入']
 };
 const DEFAULT_PEOPLE = { self: 'ホスト', spouse: 'ゲスト' };
@@ -580,6 +580,16 @@ function saveJSON(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
 
 let entries = loadJSON(STORAGE_KEY, []);
 let categories = loadJSON(CATEGORY_KEY, DEFAULT_CATEGORIES);
+// 「被服及び履物費」「美容費」を、既存の費目リストにまだ無ければ一度だけ追加する
+// （日用品費の直後に挿入。すでに追加済み・削除済みの場合は何もしない）。
+['被服及び履物費','美容費'].forEach(cat=>{
+  if(!categories.expense.includes(cat)){
+    const idx = categories.expense.indexOf('日用品費');
+    if(idx === -1) categories.expense.push(cat);
+    else categories.expense.splice(idx+1, 0, cat);
+  }
+});
+saveJSON(CATEGORY_KEY, categories);
 let people = loadJSON(PEOPLE_KEY, DEFAULT_PEOPLE);
 // 「自分」「配偶者」という旧デフォルト名のままなら、新しい既定の呼び方
 // （ホスト／ゲスト）に一度だけ引き継ぐ。名前を変更済みの場合は上書きしない。
