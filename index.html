@@ -645,9 +645,21 @@ async function syncToGAS(action, payload){
    スプレッドシート側の最新内容（家計簿の全件＋設定類）を取り込む。
    スプレッドシートを「正」とみなし、ローカルの値を上書きする
    （＝配偶者の端末で行われた変更もここで反映される）。
-   取得に失敗しても致命的にはせず、ローカルのデータで動作を続ける。 */
-async function pullFromGAS(){
-  if(!config.gasUrl) return;
+   取得に失敗しても致命的にはせず、ローカルのデータで動作を続ける。
+
+   ヘッダーの更新ボタンと、ライフプラン設定を開く直前の取得が
+   ほぼ同時に呼ばれることがある。別々に fetch すると通信中に
+   互いの結果で状態を上書きし合い、画面が更新されないことが
+   あったため、すでに取得中なら新しく fetch せず同じ Promise を
+   共有して待つようにする。 */
+let gasPullPromise = null;
+function pullFromGAS(){
+  if(!config.gasUrl) return Promise.resolve();
+  if(gasPullPromise) return gasPullPromise;
+  gasPullPromise = pullFromGASOnce().finally(()=>{ gasPullPromise = null; });
+  return gasPullPromise;
+}
+async function pullFromGASOnce(){
   try{
     const url = config.gasUrl + '?secret=' + encodeURIComponent(config.gasSecret || '');
     const res = await fetch(url, { method:'GET' });
@@ -1517,6 +1529,10 @@ function renderLifeplanTab(){
    取得し直さずに古いデータのまま保存すると、相手が別の端末で入力した
    内容を消してしまう事故につながる（実際に発生したため対策として追加）。 */
 async function openLifeplanSettings(){
+  // 通信中は何も起きていないように見えて連打されがちなので、
+  // 押した瞬間にボタンを読み込み中の見た目にしておく。
+  const btn = document.getElementById('btnLifeplanSettings');
+  if(btn){ btn.disabled = true; btn.textContent = '読み込み中…'; }
   if(config.gasUrl){
     await pullFromGAS();
   }
