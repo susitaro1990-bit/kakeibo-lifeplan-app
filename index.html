@@ -1598,7 +1598,11 @@ function renderLifeplanDashboard(){
   const main = document.getElementById('mainArea');
   lifeplanRows = computeLifePlanProjection();
 
-  const shortfallRow = lifeplanRows ? lifeplanRows.find(r => r.cash < 0) : null;
+  // 「資金ショート」は貯金がマイナスになる年ではなく、生活防衛資金（貯金の下限）を
+  // 下回って積立NISAの取り崩しが必要になる年を指す（それより後、NISAも尽きて
+  // 貯金が実際にマイナスになる年があれば、さらに深刻な警告として別途示す）。
+  const nisaShortfallRow = lifeplanRows ? lifeplanRows.find(r => r.tsumitateWithdrawal > 0) : null;
+  const cashShortfallRow = lifeplanRows ? lifeplanRows.find(r => r.cash < 0) : null;
   const upcomingEvents = lifeplanRows ? computeUpcomingLifeEvents() : [];
   const currentYear = new Date().getFullYear();
 
@@ -1621,13 +1625,18 @@ function renderLifeplanDashboard(){
 
       <div class="card">
         <h2>資金ショートのチェック</h2>
-        ${shortfallRow ? `
+        ${nisaShortfallRow ? `
           <div class="score-comment" style="color:var(--expense);font-weight:700;">
-            ⚠ ${shortfallRow.year}年（${shortfallRow.age}歳）に、貯蓄（現金）が初めてマイナスになる見込みです。
+            ⚠ ${nisaShortfallRow.year}年（${nisaShortfallRow.age}歳）に、貯金が生活防衛資金（${fmtYen(lifeplan.minCashReserve||0)}）を下回り、積立NISAの取り崩しが必要になる見込みです。
           </div>
+          ${cashShortfallRow ? `
+            <div class="score-comment" style="color:var(--expense);font-weight:700;">
+              ⚠ さらに${cashShortfallRow.year}年（${cashShortfallRow.age}歳）には積立NISAも使い切り、貯金そのものがマイナスになる見込みです。
+            </div>
+          ` : ''}
           <div class="score-comment">収入の伸び率や積立投資、住宅ローンなどの前提を見直してみましょう。</div>
         ` : `
-          <div class="score-comment" style="color:var(--income);">✓ 100歳まで、貯蓄（現金）がマイナスになる年はありません。</div>
+          <div class="score-comment" style="color:var(--income);">✓ 100歳まで、貯金が生活防衛資金を下回る年はありません。</div>
         `}
       </div>
 
