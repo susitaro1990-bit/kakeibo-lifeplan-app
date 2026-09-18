@@ -1516,7 +1516,8 @@ function computeLifePlanProjection(){
     // 非現実的なため（積立NISAの残高が足りない場合はそこまでの取り崩しになる）。
     let tsumitateWithdrawal = 0;
     const minCash = lifeplan.minCashReserve || 0;
-    if(cash < minCash){
+    const belowReserve = cash < minCash;
+    if(belowReserve){
       let shortfall = minCash - cash;
       lifeplan.investments.forEach(inv=>{
         if(shortfall <= 0 || inv.type !== 'nisa_tsumitate') return;
@@ -1536,7 +1537,7 @@ function computeLifePlanProjection(){
     // （不動産純資産は realEstateNet として別途保持し、参考値として扱う）。
     const totalAssets = cash + investTotals.nisa_tsumitate + investTotals.nisa_growth + investTotals.ideco + investTotals.taxable + investTotals.child_nisa;
 
-    rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired, tsumitateWithdrawal });
+    rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired, tsumitateWithdrawal, belowReserve });
   }
   return rows;
 }
@@ -1598,11 +1599,23 @@ function renderLifeplanDashboard(){
   const main = document.getElementById('mainArea');
   lifeplanRows = computeLifePlanProjection();
 
-  // 「資金ショート」は貯金がマイナスになる年ではなく、生活防衛資金（貯金の下限）を
-  // 下回って積立NISAの取り崩しが必要になる年を指す（それより後、NISAも尽きて
-  // 貯金が実際にマイナスになる年があれば、さらに深刻な警告として別途示す）。
-  const nisaShortfallRow = lifeplanRows ? lifeplanRows.find(r => r.tsumitateWithdrawal > 0) : null;
-  const cashShortfallRow = lifeplanRows ? lifeplanRows.find(r => r.cash < 0) : null;
+  // 資金ショートは3段階に分けて示す。
+  // 1. 取り崩す年：積立NISAから実際に取り崩しが発生する最初の年
+  // 2. 生活防衛資金が下回る年：貯金が下限を割り込む最初の年（取り崩す原資が
+  //    なければ①より先に起こることもある）
+  // 3. 生活防衛資金が枯渇する年：積立NISAの残高がゼロになる最初の年
+  const withdrawalRow = lifeplanRows ? lifeplanRows.find(r => r.tsumitateWithdrawal > 0) : null;
+  const reserveBreachRow = lifeplanRows ? lifeplanRows.find(r => r.belowReserve) : null;
+  let nisaDepletedRow = null;
+  if(lifeplanRows){
+    let prevBalance = lifeplan.investments
+      .filter(inv => inv.type === 'nisa_tsumitate')
+      .reduce((s, inv) => s + (inv.startingBalance || 0), 0);
+    for(const r of lifeplanRows){
+      if(prevBalance > 0 && r.invest.nisa_tsumitate <= 0){ nisaDepletedRow = r; break; }
+      prevBalance = r.invest.nisa_tsumitate;
+    }
+  }
   const upcomingEvents = lifeplanRows ? computeUpcomingLifeEvents() : [];
   const currentYear = new Date().getFullYear();
 
@@ -1625,13 +1638,20 @@ function renderLifeplanDashboard(){
 
       <div class="card">
         <h2>資金ショートのチェック</h2>
-        ${nisaShortfallRow ? `
-          <div class="score-comment" style="color:var(--expense);font-weight:700;">
-            ⚠ ${nisaShortfallRow.year}年（${nisaShortfallRow.age}歳）に、貯金が生活防衛資金（${fmtYen(lifeplan.minCashReserve||0)}）を下回り、積立NISAの取り崩しが必要になる見込みです。
-          </div>
-          ${cashShortfallRow ? `
+        ${(withdrawalRow || reserveBreachRow) ? `
+          ${withdrawalRow ? `
             <div class="score-comment" style="color:var(--expense);font-weight:700;">
-              ⚠ さらに${cashShortfallRow.year}年（${cashShortfallRow.age}歳）には積立NISAも使い切り、貯金そのものがマイナスになる見込みです。
+              ⚠ ${withdrawalRow.year}年（${withdrawalRow.age}歳）に、積立NISAからの取り崩しが発生する見込みです。
+            </div>
+          ` : ''}
+          ${reserveBreachRow ? `
+            <div class="score-comment" style="color:var(--expense);font-weight:700;">
+              ⚠ ${reserveBreachRow.year}年（${reserveBreachRow.age}歳）に、貯金が生活防衛資金（${fmtYen(lifeplan.minCashReserve||0)}）を下回る見込みです。
+            </div>
+          ` : ''}
+          ${nisaDepletedRow ? `
+            <div class="score-comment" style="color:var(--expense);font-weight:700;">
+              ⚠ ${nisaDepletedRow.year}年（${nisaDepletedRow.age}歳）に、積立NISAの残高がなくなる（生活防衛資金が枯渇する）見込みです。
             </div>
           ` : ''}
           <div class="score-comment">収入の伸び率や積立投資、住宅ローンなどの前提を見直してみましょう。</div>
