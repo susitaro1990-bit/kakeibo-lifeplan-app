@@ -498,6 +498,7 @@ function defaultLifeplan(){
     currentAge: null,
     inflationRate: 2,
     initialCash: 0, // シミュレーション開始時点の貯金額
+    minCashReserve: 1000000, // 貯金がこれを下回ったら積立NISAから取り崩して補う
     baseline: {
       monthlyExpense: 0,
       self: defaultPersonIncome(),
@@ -528,6 +529,7 @@ function defaultLifeplan(){
    構造へ移行する処理も兼ねる。 */
 function normalizeLifeplanBaseline(p){
   if(p.initialCash == null) p.initialCash = 0;
+  if(p.minCashReserve == null) p.minCashReserve = 1000000;
   if(!p.baseline) p.baseline = { monthlyExpense: 0, self: defaultPersonIncome(), spouse: defaultPersonIncome() };
   const b = p.baseline;
   if(!b.self){
@@ -1509,12 +1511,32 @@ function computeLifePlanProjection(){
     const netCashFlow = income - totalExpense - investContribution;
     cash += netCashFlow;
 
+    // 貯金が下限（生活防衛資金）を下回ったら、その分だけ積立NISAから
+    // 取り崩して補う。貯金がマイナスのまま資産だけ増え続けるのは
+    // 非現実的なため（積立NISAの残高が足りない場合はそこまでの取り崩しになる）。
+    let tsumitateWithdrawal = 0;
+    const minCash = lifeplan.minCashReserve || 0;
+    if(cash < minCash){
+      let shortfall = minCash - cash;
+      lifeplan.investments.forEach(inv=>{
+        if(shortfall <= 0 || inv.type !== 'nisa_tsumitate') return;
+        const take = Math.min(invBalances[inv.id] || 0, shortfall);
+        if(take > 0){
+          invBalances[inv.id] -= take;
+          investTotals.nisa_tsumitate -= take;
+          shortfall -= take;
+          tsumitateWithdrawal += take;
+        }
+      });
+      cash += tsumitateWithdrawal;
+    }
+
     // 資産＝貯金（現金）＋株式等の投資額の合計。不動産（マンション等）は
     // 評価額が不確実で流動性も低いため、あえて「資産」の合計には含めない
     // （不動産純資産は realEstateNet として別途保持し、参考値として扱う）。
     const totalAssets = cash + investTotals.nisa_tsumitate + investTotals.nisa_growth + investTotals.ideco + investTotals.taxable + investTotals.child_nisa;
 
-    rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired });
+    rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired, tsumitateWithdrawal });
   }
   return rows;
 }
@@ -1735,10 +1757,13 @@ function showLifeplanYearDetail(r){
     .filter(k => r.invest[k])
     .map(k => `${INVESTMENT_TYPES[k]} ${fmtYen(r.invest[k])}`);
   const breakdown = [`貯金 ${fmtYen(r.cash)}`, ...investParts].join('・');
+  const withdrawalNote = r.tsumitateWithdrawal > 0
+    ? `<br><span style="color:var(--expense);">※ 貯金の下限を下回ったため、積立NISAから ${fmtYen(r.tsumitateWithdrawal)} 取り崩しました</span>`
+    : '';
   box.innerHTML = `
     <strong>${r.year}年（${r.age}歳）${r.isRetired ? '・リタイア後' : ''}</strong><br>
     収入 ${fmtYen(r.income)}　支出 ${fmtYen(r.expense)}<br>
-    資産合計 ${fmtYen(r.totalAssets)}（${breakdown}）`;
+    資産合計 ${fmtYen(r.totalAssets)}（${breakdown}）${withdrawalNote}`;
 }
 
 function renderChildEduCard(child){
@@ -2153,9 +2178,11 @@ function renderLifeplanSettingsPage(){
       </div>
       <div class="form-row">
         <div><label>現在の貯金額（シミュレーション開始時点）</label><input type="number" id="lpInitialCash" value="${p.initialCash||''}" placeholder="0"></div>
+        <div><label>貯金の下限（生活防衛資金）</label><input type="number" id="lpMinCashReserve" value="${p.minCashReserve||''}" placeholder="1000000"></div>
       </div>
       <div class="sync-status">収入は下で自分・配偶者それぞれ入力し、合算してシミュレーションします（いずれも家計簿の実績とは連動しません）。<br>
-      税金・社会保険料の詳細計算はせず、「手取り」を直接入力する簡易方式です。リタイア後は世帯の年金額に切り替わります（年金額もインフレ率にあわせて実質的な目減りを考慮します）。</div>
+      税金・社会保険料の詳細計算はせず、「手取り」を直接入力する簡易方式です。リタイア後は世帯の年金額に切り替わります（年金額もインフレ率にあわせて実質的な目減りを考慮します）。<br>
+      貯金が「貯金の下限」を下回った年は、その分だけ積立NISAから自動的に取り崩して貯金を補います（積立NISAの残高が足りない場合はそこまでの取り崩しになります）。</div>
     </div>
 
     ${renderIncomeCard('self')}
@@ -2255,6 +2282,7 @@ function collectLifeplanFormValues(){
   p.currentAge = parseInt(val('lpAge').value) || null;
   p.inflationRate = parseFloat(val('lpInflation').value) || 0;
   p.initialCash = parseFloat(val('lpInitialCash').value) || 0;
+  p.minCashReserve = parseFloat(val('lpMinCashReserve').value) || 0;
   ['self','spouse'].forEach(personKey=>{
     const prefix = 'lp' + (personKey==='self' ? 'Self' : 'Spouse');
     const person = p.baseline[personKey];
