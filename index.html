@@ -151,6 +151,9 @@
   .form-row{display:flex;gap:8px;}
   .form-row > div{flex:1;}
   label{display:block;font-size:11.5px;color:var(--text-dim);margin-bottom:4px;font-weight:600;}
+  /* 同じ行の隣のラベルが2行に折り返す一方でこちらは1行、といった場合に
+     入力欄の高さがずれてしまうのを防ぐため、2行分の高さを確保しておく。 */
+  label.label-2line{min-height:2.4em;}
   input, select, textarea{
     width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:9px;
     font-size:14px;background:#fbfcfb;color:var(--text);font-family:inherit;
@@ -2206,8 +2209,8 @@ function renderLifeplanSettingsPage(){
         </div>
       </div>
       <div class="form-row">
-        <div><label>現在の貯金額（シミュレーション開始時点）</label><input type="number" id="lpInitialCash" value="${p.initialCash||''}" placeholder="0"></div>
-        <div><label>貯金の下限（生活防衛資金）</label><input type="number" id="lpMinCashReserve" value="${p.minCashReserve||''}" placeholder="1000000"></div>
+        <div><label class="label-2line">現在の貯金額（シミュレーション開始時点）</label><input type="number" id="lpInitialCash" value="${p.initialCash||''}" placeholder="0"></div>
+        <div><label class="label-2line">貯金の下限（生活防衛資金）</label><input type="number" id="lpMinCashReserve" value="${p.minCashReserve||''}" placeholder="1000000"></div>
       </div>
       <div class="sync-status">収入は下で自分・配偶者それぞれ入力し、合算してシミュレーションします（いずれも家計簿の実績とは連動しません）。<br>
       税金・社会保険料の詳細計算はせず、「手取り」を直接入力する簡易方式です。リタイア後は世帯の年金額に切り替わります（年金額もインフレ率にあわせて実質的な目減りを考慮します）。<br>
