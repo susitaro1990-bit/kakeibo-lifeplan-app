@@ -1431,9 +1431,10 @@ function computeLifePlanProjection(){
 
     let income;
     if(isRetired){
-      // 年金は物価に連動して増えない（マクロ経済スライドで実質目減りする）ため、
-      // 受給時の金額のまま固定する。生活費だけがインフレで増える。
-      income = lifeplan.retirement.pensionAnnual;
+      // 年金は「今の物価での金額」で入力してもらい、リタイア時点までインフレ換算する。
+      // 受給開始後は物価に連動して増えない（マクロ経済スライドで実質目減りする）ため固定。
+      const yearsToRetire = Math.max(0, lifeplan.retirement.retireAge - lifeplan.currentAge);
+      income = lifeplan.retirement.pensionAnnual * Math.pow(1+infl, yearsToRetire);
     } else {
       income = computePersonIncomeForYear(lifeplan.baseline.self, year, i)
               + computePersonIncomeForYear(lifeplan.baseline.spouse, year, i);
@@ -2215,7 +2216,7 @@ function renderLifeplanSettingsPage(){
         <div><label class="label-2line">貯金の下限（生活防衛資金）</label><input type="number" id="lpMinCashReserve" value="${p.minCashReserve||''}" placeholder="1000000"></div>
       </div>
       <div class="sync-status">収入は下で自分・配偶者それぞれ入力し、合算してシミュレーションします（いずれも家計簿の実績とは連動しません）。<br>
-      税金・社会保険料の詳細計算はせず、「手取り」を直接入力する簡易方式です。リタイア後は世帯の年金額に切り替わります（年金額は受給時の金額のまま固定で、インフレで増えないため、物価上昇分だけ実質的に目減りします）。<br>
+      税金・社会保険料の詳細計算はせず、「手取り」を直接入力する簡易方式です。リタイア後は世帯の年金額に切り替わります（年金は今の物価での金額を入力すると、リタイア時点までインフレ換算し、受給開始後は固定のため、物価上昇分だけ実質的に目減りします）。<br>
       貯金が「貯金の下限」を下回った年は、その分だけ積立NISAから自動的に取り崩して貯金を補います（積立NISAの残高が足りない場合はそこまでの取り崩しになります）。</div>
     </div>
 
@@ -2231,8 +2232,8 @@ function renderLifeplanSettingsPage(){
     <div class="card">
       <h2>リタイア関連の設定</h2>
       <div class="form-row">
-        <div><label>年金見込み額（年額・受給時の金額）</label><input type="number" id="lpPension" value="${p.retirement.pensionAnnual||''}" placeholder="0"></div>
-        <div><label>老後の生活費（年額）</label><input type="number" id="lpRetireLiving" value="${p.retirement.livingCostAnnual||''}" placeholder="0"></div>
+        <div><label>年金見込み額（年額・今の物価での金額）</label><input type="number" id="lpPension" value="${p.retirement.pensionAnnual||''}" placeholder="0"></div>
+        <div><label>老後の生活費（年額・今の物価での金額）</label><input type="number" id="lpRetireLiving" value="${p.retirement.livingCostAnnual||''}" placeholder="0"></div>
       </div>
       <div class="form-row">
         <div><label>リタイア年齢</label><input type="number" id="lpRetireAge" value="${p.retirement.retireAge}"></div>
