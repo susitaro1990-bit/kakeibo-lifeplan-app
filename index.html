@@ -318,6 +318,7 @@
   }
   .preset-btn:hover{background:var(--accent-dim);color:var(--accent);border-color:var(--accent);}
 
+  .summary-note{font-size:11.5px;color:var(--text-dim);text-align:center;margin:-6px 0 14px;}
   .pie-summary{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-dim);margin-bottom:10px;flex-wrap:wrap;}
   .pie-summary b{font-size:13.5px;color:var(--text);}
   .pie-summary b.income{color:var(--income);} .pie-summary b.expense{color:var(--expense);}
@@ -431,6 +432,8 @@ const DEFAULT_CATEGORIES = {
   expense: ['食費','日用品費','被服及び履物費','美容費','娯楽費','交通費','住居費','電気代','ガス代','水道代','医療費','教育費','保険料','積立投資','その他'],
   income: ['給与','賞与','副業','その他収入']
 };
+// 「積立投資」は消費ではなく資産の置き場所が変わるだけなので、集計では支出と分けて数える。
+const INVEST_CATEGORY = '積立投資';
 const DEFAULT_PEOPLE = { self: 'ホスト', spouse: 'ゲスト' };
 // 「自分」「配偶者」という旧デフォルト名のままなら、新しい既定の呼び方
 // （ホスト／ゲスト）に引き継ぐ。名前を変更済みの場合は上書きしない。
@@ -626,10 +629,10 @@ function migrateCategories(c){
       else c.expense.splice(idx+1, 0, cat);
     }
   });
-  if(!c.expense.includes('積立投資')){
+  if(!c.expense.includes(INVEST_CATEGORY)){
     const idx = c.expense.indexOf('その他');
-    if(idx === -1) c.expense.push('積立投資');
-    else c.expense.splice(idx, 0, '積立投資');
+    if(idx === -1) c.expense.push(INVEST_CATEGORY);
+    else c.expense.splice(idx, 0, INVEST_CATEGORY);
   }
   return c;
 }
@@ -1076,23 +1079,30 @@ function renderAll(){
   renderLedgerTab();
 }
 
+/* 月ごとの収入・支出・積立投資の合計。積立投資は支出に含めない。 */
+function aggregateByMonth(list){
+  const byMonth = {};
+  list.forEach(e=>{
+    const mk = monthKey(e.date);
+    if(!byMonth[mk]) byMonth[mk] = {income:0, expense:0, invest:0};
+    if(e.type === 'expense' && e.category === INVEST_CATEGORY) byMonth[mk].invest += e.amount;
+    else byMonth[mk][e.type] += e.amount;
+  });
+  return byMonth;
+}
+
 function renderLedgerTab(){
   const main = document.getElementById('mainArea');
   const list = visibleEntries();
 
   // 月別集計
-  const byMonth = {};
-  list.forEach(e=>{
-    const mk = monthKey(e.date);
-    if(!byMonth[mk]) byMonth[mk] = {income:0, expense:0};
-    byMonth[mk][e.type] += e.amount;
-  });
+  const byMonth = aggregateByMonth(list);
   const months = Object.keys(byMonth).sort();
 
-  // 今月のサマリー
+  // 今月のサマリー（収支 ＝ 収入 − 支出 − 積立投資）
   const curMonth = todayStr().slice(0,7);
-  const curAgg = byMonth[curMonth] || {income:0, expense:0};
-  const balance = curAgg.income - curAgg.expense;
+  const curAgg = byMonth[curMonth] || {income:0, expense:0, invest:0};
+  const balance = curAgg.income - curAgg.expense - curAgg.invest;
   const editingEntry = state.editingId ? entries.find(e=>e.id===state.editingId) : null;
 
   main.innerHTML = `
@@ -1112,6 +1122,7 @@ function renderLedgerTab(){
         <div class="val balance ${balance>=0?'pos':'neg'}">${fmtYen(balance)}</div>
       </div>
     </div>
+    ${curAgg.invest > 0 ? `<div class="summary-note">うち積立投資 ${fmtYen(curAgg.invest)}（支出には含めず、収支から差し引いています）</div>` : ''}
 
     <div class="card">
       <h2>${editingEntry ? '入力を編集' : '入力（'+personName(state.currentPerson)+'）'}</h2>
@@ -1337,13 +1348,7 @@ function renderChart(months, byMonth){
 }
 function renderChartSelectionOnly(){
   // re-render chart highlight without full page rebuild
-  const list = visibleEntries();
-  const byMonth = {};
-  list.forEach(e=>{
-    const mk = monthKey(e.date);
-    if(!byMonth[mk]) byMonth[mk] = {income:0, expense:0};
-    byMonth[mk][e.type] += e.amount;
-  });
+  const byMonth = aggregateByMonth(visibleEntries());
   renderChart(Object.keys(byMonth).sort(), byMonth);
 }
 
@@ -1383,7 +1388,7 @@ function renderDetail(list){
 }
 
 function escapeHtml(s){
-  return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 /* =========================================================
@@ -1409,10 +1414,12 @@ function computeAnalysis(startMk, endMk, person){
   const monthCount = Math.max(1, monthsBetween(startMk, endMk).length);
   const byCatExpense = {};
   const byCatIncome = {};
+  let totalInvest = 0;
   entries.forEach(e=>{
     const mk = monthKey(e.date);
     if(mk < startMk || mk > endMk) return;
     if(person !== 'combined' && e.person !== person) return;
+    if(e.type === 'expense' && e.category === INVEST_CATEGORY){ totalInvest += e.amount; return; }
     const bucket = e.type === 'expense' ? byCatExpense : byCatIncome;
     bucket[e.category] = (bucket[e.category] || 0) + e.amount;
   });
@@ -1424,9 +1431,10 @@ function computeAnalysis(startMk, endMk, person){
   const totalExpense = expenseRows.reduce((s,r)=>s+r.total, 0);
   const totalIncome = incomeRows.reduce((s,r)=>s+r.total, 0);
   return {
-    monthCount, expenseRows, incomeRows, totalExpense, totalIncome,
+    monthCount, expenseRows, incomeRows, totalExpense, totalIncome, totalInvest,
     avgExpense: totalExpense / monthCount,
     avgIncome: totalIncome / monthCount,
+    avgInvest: totalInvest / monthCount,
   };
 }
 
@@ -1529,7 +1537,7 @@ function renderPieComparisonCards(){
   entries.forEach(e=>{
     if(monthKey(e.date) !== mk) return;
     if(e.type === 'income'){ inc += e.amount; return; }
-    if(e.category === '積立投資'){ actualInv += e.amount; groups['積立投資'] = (groups['積立投資']||0) + e.amount; return; }
+    if(e.category === INVEST_CATEGORY){ actualInv += e.amount; groups['積立投資'] = (groups['積立投資']||0) + e.amount; return; }
     exp += e.amount;
     const g = LEDGER_TO_PIE_GROUP[e.category] || 'その他';
     groups[g] = (groups[g]||0) + e.amount;
@@ -1569,7 +1577,7 @@ function renderAnalysisTab(){
     const tmp = state.analysisStart; state.analysisStart = state.analysisEnd; state.analysisEnd = tmp;
   }
 
-  const { monthCount, expenseRows, incomeRows, avgExpense, avgIncome } =
+  const { monthCount, expenseRows, incomeRows, avgExpense, avgIncome, avgInvest } =
     computeAnalysis(state.analysisStart, state.analysisEnd, state.analysisPerson);
 
   const presets = [['3','直近3ヶ月'],['6','直近6ヶ月'],['12','直近12ヶ月'],['ytd','今年'],['all','全期間']];
@@ -1615,9 +1623,10 @@ function renderAnalysisTab(){
       </div>
       <div class="summary-box">
         <div class="label">平均収支 / 月</div>
-        <div class="val balance ${avgIncome-avgExpense>=0?'pos':'neg'}">${fmtYen(avgIncome-avgExpense)}</div>
+        <div class="val balance ${avgIncome-avgExpense-avgInvest>=0?'pos':'neg'}">${fmtYen(avgIncome-avgExpense-avgInvest)}</div>
       </div>
     </div>
+    ${avgInvest > 0 ? `<div class="summary-note">うち積立投資 ${fmtYen(avgInvest)} / 月（支出には含めず、収支から差し引いています）</div>` : ''}
 
     <div class="card">
       <h2>支出の内訳（費目別の月平均）</h2>
