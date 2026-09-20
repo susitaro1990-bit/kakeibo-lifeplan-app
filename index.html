@@ -423,7 +423,7 @@ const DEFAULT_THEME_COLORS = { self: '#3f7a5c', spouse: '#a9762c' };
 const THEME_PALETTE = ['#3f7a5c','#2f6f8f','#7a5fae','#c1573f','#c2578b','#2f8f8f','#a9762c','#5f7a3f'];
 
 const DEFAULT_CATEGORIES = {
-  expense: ['食費','日用品費','被服及び履物費','美容費','娯楽費','交通費','住居費','電気代','ガス代','水道代','医療費','教育費','保険料','その他'],
+  expense: ['食費','日用品費','被服及び履物費','美容費','娯楽費','交通費','住居費','電気代','ガス代','水道代','医療費','教育費','保険料','積立投資','その他'],
   income: ['給与','賞与','副業','その他収入']
 };
 const DEFAULT_PEOPLE = { self: 'ホスト', spouse: 'ゲスト' };
@@ -611,16 +611,24 @@ function loadJSON(key, fallback){
 function saveJSON(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
 
 let entries = loadJSON(STORAGE_KEY, []);
-let categories = loadJSON(CATEGORY_KEY, DEFAULT_CATEGORIES);
-// 「被服及び履物費」「美容費」を、既存の費目リストにまだ無ければ一度だけ追加する
-// （日用品費の直後に挿入。すでに追加済み・削除済みの場合は何もしない）。
-['被服及び履物費','美容費'].forEach(cat=>{
-  if(!categories.expense.includes(cat)){
-    const idx = categories.expense.indexOf('日用品費');
-    if(idx === -1) categories.expense.push(cat);
-    else categories.expense.splice(idx+1, 0, cat);
+// 新しく増えた費目を、既存の費目リストにまだ無ければ追加する。
+// サーバーから取得した費目リストにも同じ処理をかける（古いままだと消えてしまうため）。
+function migrateCategories(c){
+  ['被服及び履物費','美容費'].forEach(cat=>{
+    if(!c.expense.includes(cat)){
+      const idx = c.expense.indexOf('日用品費');
+      if(idx === -1) c.expense.push(cat);
+      else c.expense.splice(idx+1, 0, cat);
+    }
+  });
+  if(!c.expense.includes('積立投資')){
+    const idx = c.expense.indexOf('その他');
+    if(idx === -1) c.expense.push('積立投資');
+    else c.expense.splice(idx, 0, '積立投資');
   }
-});
+  return c;
+}
+let categories = migrateCategories(loadJSON(CATEGORY_KEY, DEFAULT_CATEGORIES));
 saveJSON(CATEGORY_KEY, categories);
 let people = migratePeopleNames(loadJSON(PEOPLE_KEY, DEFAULT_PEOPLE));
 saveJSON(PEOPLE_KEY, people);
@@ -695,7 +703,12 @@ async function pullFromGASOnce(){
       if(st[key] == null) return;
       try{ setter(JSON.parse(st[key])); }catch(err){ console.error('failed to parse GAS state for', key, err); }
     };
-    applyState('categories', v=>{ categories = v; saveJSON(CATEGORY_KEY, categories); });
+    applyState('categories', v=>{
+      const before = JSON.stringify(v);
+      categories = migrateCategories(v);
+      saveJSON(CATEGORY_KEY, categories);
+      if(JSON.stringify(categories) !== before) syncState('categories', categories);
+    });
     applyState('people', v=>{
       const migrated = migratePeopleNames(v);
       people = migrated;
@@ -1268,7 +1281,7 @@ const PIE_COLORS = {
 const LEDGER_TO_PIE_GROUP = {
   '食費':'食費','日用品費':'家具・日用品','被服及び履物費':'被服・美容','美容費':'被服・美容',
   '娯楽費':'教養娯楽','交通費':'交通・通信','住居費':'住居','電気代':'光熱・水道','ガス代':'光熱・水道',
-  '水道代':'光熱・水道','医療費':'保健医療・保険','保険料':'保健医療・保険','教育費':'教育','その他':'その他'
+  '水道代':'光熱・水道','医療費':'保健医療・保険','保険料':'保健医療・保険','教育費':'教育','積立投資':'積立投資','その他':'その他'
 };
 
 function renderDonut(groups, centerLabel){
@@ -1334,23 +1347,25 @@ function renderPieComparisonCards(){
   }
 
   const groups = {};
-  let inc = 0, exp = 0;
+  let inc = 0, exp = 0, actualInv = 0;
   entries.forEach(e=>{
     if(monthKey(e.date) !== mk) return;
     if(e.type === 'income'){ inc += e.amount; return; }
+    if(e.category === '積立投資'){ actualInv += e.amount; groups['積立投資'] = (groups['積立投資']||0) + e.amount; return; }
     exp += e.amount;
     const g = LEDGER_TO_PIE_GROUP[e.category] || 'その他';
     groups[g] = (groups[g]||0) + e.amount;
   });
-  const actualRemain = inc - exp;
-  if(actualRemain > 0) groups['貯金・積立（残り）'] = actualRemain;
+  const actualRemain = inc - exp - actualInv;
+  if(actualRemain > 0) groups['貯金（残り）'] = actualRemain;
   const actualBody = `
     <div class="pie-summary">
       <span>収入 <b class="income">${fmtYen(inc)}</b></span>
       <span>支出 <b class="expense">${fmtYen(exp)}</b></span>
-      <span>${actualRemain >= 0 ? '貯金・積立（残り）' : '不足'} <b class="${actualRemain >= 0 ? '' : 'expense'}">${fmtYen(Math.abs(actualRemain))}</b></span>
+      <span>積立投資 <b>${fmtYen(actualInv)}</b></span>
+      <span>${actualRemain >= 0 ? '貯金（残り）' : '不足'} <b class="${actualRemain >= 0 ? '' : 'expense'}">${fmtYen(Math.abs(actualRemain))}</b></span>
     </div>
-    ${renderDonut(groups, actualRemain >= 0 ? '収入' : '支出合計')}
+    ${renderDonut(groups, actualRemain >= 0 ? '収入' : '支出＋積立')}
     <div class="sync-status">家計簿に記録した${monthLabel(mk)}の実績です（ホスト・ゲスト合算）。</div>`;
 
   return `
