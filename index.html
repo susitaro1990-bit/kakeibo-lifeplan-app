@@ -154,15 +154,19 @@
 
   form.entry-form{display:flex;flex-direction:column;gap:10px;}
   .form-row{display:flex;gap:8px;}
-  .form-row > div{flex:1;}
+  /* 同じ行の隣のラベルだけが2行に折り返しても、入力欄の高さ・位置がずれないように、
+     ラベルは上に、入力欄は下にそろえる（ラベルが余った高さを受け持つ）。 */
+  .form-row > div{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .form-row > div > label{flex:1 1 auto;}
+  .form-row + .form-row{margin-top:10px;}
+  form.entry-form .form-row + .form-row{margin-top:0;} /* このフォームは flex の gap で間隔を取っている */
   label{display:block;font-size:11.5px;color:var(--text-dim);margin-bottom:4px;font-weight:600;}
-  /* 同じ行の隣のラベルが2行に折り返す一方でこちらは1行、といった場合に
-     入力欄の高さがずれてしまうのを防ぐため、2行分の高さを確保しておく。 */
-  label.label-2line{min-height:2.4em;}
   input, select, textarea{
     width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:9px;
     font-size:14px;background:#fbfcfb;color:var(--text);font-family:inherit;
   }
+  /* 日付・月・数値・文字・選択で、ブラウザごとに高さがまちまちにならないよう統一する */
+  input:not([type=checkbox]):not([type=color]):not([type=hidden]), select{height:44px;}
   input:focus, select:focus, textarea:focus{outline:2px solid var(--accent-dim);border-color:var(--accent);}
   .fixed-checkbox-row{
     display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;
@@ -270,6 +274,7 @@
     position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
     background:#1f2a24;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;
     z-index:200;opacity:0;pointer-events:none;transition:opacity .25s;
+    width:max-content;max-width:calc(100vw - 32px);text-align:center;line-height:1.5;
   }
   .toast.show{opacity:1;}
 
@@ -318,6 +323,9 @@
   }
   .preset-btn:hover{background:var(--accent-dim);color:var(--accent);border-color:var(--accent);}
 
+  input.input-error, select.input-error{border-color:var(--expense);background:#fdf3f1;}
+  .withdraw-types{margin:4px 0 10px;}
+  .withdraw-types .chk-row{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:2px;}
   .summary-note{font-size:11.5px;color:var(--text-dim);text-align:center;margin:-6px 0 14px;}
   .pie-summary{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-dim);margin-bottom:10px;flex-wrap:wrap;}
   .pie-summary b{font-size:13.5px;color:var(--text);}
@@ -464,6 +472,14 @@ const INVESTMENT_TYPES = {
   taxable: '課税投資枠',
   child_nisa: '子供名義の資産',
 };
+// 貯金が足りないときに取り崩す順番（課税口座は利益に税がかかるので先、非課税のNISAは最後）。
+// iDeCoは60歳まで引き出せない、子供名義は世帯の自由な資金ではないため、対象にしない。
+const WITHDRAW_ORDER = ['taxable', 'nisa_growth', 'nisa_tsumitate'];
+function withdrawSourceLabel(){
+  const types = Array.isArray(lifeplan.withdrawTypes) ? lifeplan.withdrawTypes : ['nisa_tsumitate'];
+  const names = WITHDRAW_ORDER.filter(t => types.includes(t)).map(t => INVESTMENT_TYPES[t]);
+  return names.length ? names.join('・') : '投資';
+}
 const ASSET_SERIES_COLORS = {
   cash: '#3f7a5c',
   nisa_tsumitate: '#2f6f8f',
@@ -519,7 +535,9 @@ function defaultLifeplan(){
     currentAge: null,
     inflationRate: 2,
     initialCash: 0, // シミュレーション開始時点の貯金額
-    minCashReserve: 1000000, // 貯金がこれを下回ったら積立NISAから取り崩して補う
+    minCashReserve: 1000000, // 貯金がこれを下回ったら投資から取り崩して補う
+    withdrawTypes: ['nisa_tsumitate'], // 取り崩しに使う投資枠（課税→成長投資枠→つみたてNISAの順に使う）
+    spouseAge: null, // 配偶者の現在の年齢（空欄＝自分と同じ）
     baseline: {
       monthlyExpense: 0,
       self: defaultPersonIncome(),
@@ -528,7 +546,7 @@ function defaultLifeplan(){
     expenses: defaultExpenses(),
     mortgage: { balance: 0, years: 0, rate: 1.0 },
     realEstate: { price: 0, appreciationRate: 0 },
-    retirement: { pensionAnnual: 0, livingCostAnnual: 0, retireAge: 65 },
+    retirement: { pensionAnnual: 0, livingCostAnnual: 0, retireAge: 65, spouseRetireAge: null, spouseShare: 50 },
     retirementBonus: { amount: 0, age: 65 },
     car: { cycleYears: 0, cost: 0 },
     insurances: [],
@@ -601,6 +619,10 @@ function normalizeLifeplanBaseline(p){
   if(!p.mortgage) p.mortgage = { balance: 0, years: 0, rate: 1.0 };
   if(!p.realEstate) p.realEstate = { price: 0, appreciationRate: 0 };
   if(!p.retirement) p.retirement = { pensionAnnual: 0, livingCostAnnual: 0, retireAge: 65 };
+  if(p.retirement.spouseRetireAge === undefined) p.retirement.spouseRetireAge = null; // 空欄＝自分と同じ
+  if(p.retirement.spouseShare == null) p.retirement.spouseShare = 50; // 年金のうち配偶者分の割合（%）
+  if(p.spouseAge === undefined) p.spouseAge = null;
+  if(!Array.isArray(p.withdrawTypes)) p.withdrawTypes = ['nisa_tsumitate'];
   if(!p.retirementBonus) p.retirementBonus = { amount: 0, age: 65 };
   if(!p.car) p.car = { cycleYears: 0, cost: 0 };
   if(!Array.isArray(p.insurances)) p.insurances = [];
@@ -1056,12 +1078,12 @@ function monthLabel(mk){
 function personColor(p){ return p==='self' ? 'var(--self-color)' : 'var(--spouse-color)'; }
 function personName(p){ return people[p] || p; }
 
-function showToast(msg){
+function showToast(msg, ms){
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(showToast._timer);
-  showToast._timer = setTimeout(()=>t.classList.remove('show'), 2200);
+  showToast._timer = setTimeout(()=>t.classList.remove('show'), ms || 2200);
 }
 
 function visibleEntries(){
@@ -1231,6 +1253,18 @@ function fillCategoryOptions(sel, type){
   });
 }
 
+/* 家計簿の入力チェック（明らかな入力ミスだけを止める。先の日付は確認ダイアログで別途聞く）。 */
+function futureLimitStr(){
+  const d = new Date();
+  d.setDate(d.getDate() + 31);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function validateEntryInput(date, amount){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < '2000-01-01') return '日付が正しくありません（2000年以降で入力してください）';
+  if(!isFinite(amount) || amount > 1000000000) return '金額が大きすぎます（10億円以下で入力してください）';
+  return '';
+}
+
 function onSubmitEntry(ev){
   ev.preventDefault();
   const date = document.getElementById('fDate').value;
@@ -1241,6 +1275,9 @@ function onSubmitEntry(ev){
     showToast('日付と金額を確認してください');
     return;
   }
+  const entryError = validateEntryInput(date, amount);
+  if(entryError){ showToast(entryError, 3500); return; }
+  if(date > futureLimitStr() && !confirm(`${date} は先の日付です。このまま記録しますか？`)) return;
   if(state.editingId){
     const idx = entries.findIndex(e=>e.id===state.editingId);
     if(idx !== -1){
@@ -1746,25 +1783,36 @@ function computeLifePlanProjection(){
   lifeplan.investments.forEach(inv => invBalances[inv.id] = inv.startingBalance || 0);
   const insuranceAnnualTotal = lifeplan.insurances.reduce((s,i)=> s + (i.annualPremium||0), 0);
 
+  // 自分・配偶者それぞれの年齢とリタイア年齢。配偶者の欄が空なら自分と同じとみなす。
+  const rt = lifeplan.retirement;
+  const spouseAge0 = lifeplan.spouseAge || lifeplan.currentAge;
+  const selfRetireAge = rt.retireAge;
+  const spouseRetireAge = rt.spouseRetireAge || rt.retireAge;
+  // 年金は世帯の金額を入力してもらい、配偶者分の割合で二人に分ける。
+  // 「今の物価での金額」なので、それぞれのリタイア時点までインフレ換算する。
+  // 受給開始後は物価に連動して増えない（マクロ経済スライドで実質目減りする）ため固定。
+  const spouseShare = Math.min(100, Math.max(0, rt.spouseShare == null ? 50 : rt.spouseShare)) / 100;
+  const pensionSelf = (rt.pensionAnnual || 0) * (1 - spouseShare)
+    * Math.pow(1+infl, Math.max(0, selfRetireAge - lifeplan.currentAge));
+  const pensionSpouse = (rt.pensionAnnual || 0) * spouseShare
+    * Math.pow(1+infl, Math.max(0, spouseRetireAge - spouseAge0));
+  const withdrawTypes = Array.isArray(lifeplan.withdrawTypes) ? lifeplan.withdrawTypes : ['nisa_tsumitate'];
+
   const rows = [];
   for(let i=0; i<yearsToProject; i++){
     const year = startYear + i;
     const age = lifeplan.currentAge + i;
-    const isRetired = age >= lifeplan.retirement.retireAge;
+    const selfRetired = age >= selfRetireAge;
+    const spouseRetired = (spouseAge0 + i) >= spouseRetireAge;
+    const isRetired = selfRetired && spouseRetired; // 二人ともリタイア済み（生活費が「老後の生活費」に切り替わる）
     const inflationFactor = Math.pow(1+infl, i);
 
-    let income;
-    if(isRetired){
-      // 年金は「今の物価での金額」で入力してもらい、リタイア時点までインフレ換算する。
-      // 受給開始後は物価に連動して増えない（マクロ経済スライドで実質目減りする）ため固定。
-      const yearsToRetire = Math.max(0, lifeplan.retirement.retireAge - lifeplan.currentAge);
-      income = lifeplan.retirement.pensionAnnual * Math.pow(1+infl, yearsToRetire);
-    } else {
-      income = computePersonIncomeForYear(lifeplan.baseline.self, year, i)
-              + computePersonIncomeForYear(lifeplan.baseline.spouse, year, i);
-    }
+    let income = (selfRetired ? pensionSelf : computePersonIncomeForYear(lifeplan.baseline.self, year, i))
+               + (spouseRetired ? pensionSpouse : computePersonIncomeForYear(lifeplan.baseline.spouse, year, i));
+    let bonus = 0;
     if(age === lifeplan.retirementBonus.age && lifeplan.retirementBonus.amount > 0){
-      income += lifeplan.retirementBonus.amount;
+      bonus = lifeplan.retirementBonus.amount;
+      income += bonus;
     }
 
     const ex = lifeplan.expenses;
@@ -1868,25 +1916,30 @@ function computeLifePlanProjection(){
     addGroup('交際費', ceremonyCost);
     addGroup('その他', eventCost);
 
-    // 貯金が下限（生活防衛資金）を下回ったら、その分だけ積立NISAから
-    // 取り崩して補う。貯金がマイナスのまま資産だけ増え続けるのは
-    // 非現実的なため（積立NISAの残高が足りない場合はそこまでの取り崩しになる）。
-    let tsumitateWithdrawal = 0;
+    // 貯金が下限（生活防衛資金）を下回ったら、その分だけ設定で選んだ投資枠から
+    // 取り崩して補う。貯金がマイナスのまま資産だけ増え続けるのは非現実的なため
+    // （残高が足りない場合はそこまでの取り崩しになる）。
+    let investWithdrawal = 0;
+    const withdrawalParts = {};
     const minCash = lifeplan.minCashReserve || 0;
     const belowReserve = cash < minCash;
     if(belowReserve){
       let shortfall = minCash - cash;
-      lifeplan.investments.forEach(inv=>{
-        if(shortfall <= 0 || inv.type !== 'nisa_tsumitate') return;
-        const take = Math.min(invBalances[inv.id] || 0, shortfall);
-        if(take > 0){
-          invBalances[inv.id] -= take;
-          investTotals.nisa_tsumitate -= take;
-          shortfall -= take;
-          tsumitateWithdrawal += take;
-        }
+      WITHDRAW_ORDER.forEach(type=>{
+        if(!withdrawTypes.includes(type)) return;
+        lifeplan.investments.forEach(inv=>{
+          if(shortfall <= 0 || inv.type !== type) return;
+          const take = Math.min(invBalances[inv.id] || 0, shortfall);
+          if(take > 0){
+            invBalances[inv.id] -= take;
+            investTotals[type] -= take;
+            shortfall -= take;
+            investWithdrawal += take;
+            withdrawalParts[type] = (withdrawalParts[type] || 0) + take;
+          }
+        });
       });
-      cash += tsumitateWithdrawal;
+      cash += investWithdrawal;
     }
 
     // 資産＝貯金（現金）＋株式等の投資額の合計。不動産（マンション等）は
@@ -1894,7 +1947,7 @@ function computeLifePlanProjection(){
     // （不動産純資産は realEstateNet として別途保持し、参考値として扱う）。
     const totalAssets = cash + investTotals.nisa_tsumitate + investTotals.nisa_growth + investTotals.ideco + investTotals.taxable + investTotals.child_nisa;
 
-    rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired, tsumitateWithdrawal, belowReserve, expenseGroups, investContribution });
+    rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired, selfRetired, spouseRetired, bonus, investWithdrawal, withdrawalParts, belowReserve, expenseGroups, investContribution });
   }
   return rows;
 }
@@ -1958,20 +2011,22 @@ function renderLifeplanDashboard(){
   lifeplanRows = computeLifePlanProjection();
 
   // 資金ショートは3段階に分けて示す。
-  // 1. 取り崩す年：積立NISAから実際に取り崩しが発生する最初の年
+  // 1. 取り崩す年：投資から実際に取り崩しが発生する最初の年
   // 2. 生活防衛資金が下回る年：貯金が下限を割り込む最初の年（取り崩す原資が
   //    なければ①より先に起こることもある）
-  // 3. 生活防衛資金が枯渇する年：積立NISAの残高がゼロになる最初の年
-  const withdrawalRow = lifeplanRows ? lifeplanRows.find(r => r.tsumitateWithdrawal > 0) : null;
+  // 3. 生活防衛資金が枯渇する年：取り崩し対象の投資の残高がゼロになる最初の年
+  const withdrawalRow = lifeplanRows ? lifeplanRows.find(r => r.investWithdrawal > 0) : null;
   const reserveBreachRow = lifeplanRows ? lifeplanRows.find(r => r.belowReserve) : null;
   let nisaDepletedRow = null;
   if(lifeplanRows){
+    const srcTypes = WITHDRAW_ORDER.filter(t => (lifeplan.withdrawTypes || []).includes(t));
+    const balanceOf = r => srcTypes.reduce((s, t) => s + (r.invest[t] || 0), 0);
     let prevBalance = lifeplan.investments
-      .filter(inv => inv.type === 'nisa_tsumitate')
+      .filter(inv => srcTypes.includes(inv.type))
       .reduce((s, inv) => s + (inv.startingBalance || 0), 0);
     for(const r of lifeplanRows){
-      if(prevBalance > 0 && r.invest.nisa_tsumitate <= 0){ nisaDepletedRow = r; break; }
-      prevBalance = r.invest.nisa_tsumitate;
+      if(prevBalance > 0 && balanceOf(r) <= 0){ nisaDepletedRow = r; break; }
+      prevBalance = balanceOf(r);
     }
   }
   const upcomingEvents = lifeplanRows ? computeUpcomingLifeEvents() : [];
@@ -1999,7 +2054,7 @@ function renderLifeplanDashboard(){
         ${(withdrawalRow || reserveBreachRow) ? `
           ${withdrawalRow ? `
             <div class="score-comment" style="color:var(--expense);font-weight:700;">
-              ⚠ ${withdrawalRow.year}年（${withdrawalRow.age}歳）に、積立NISAからの取り崩しが発生する見込みです。
+              ⚠ ${withdrawalRow.year}年（${withdrawalRow.age}歳）に、${withdrawSourceLabel()}からの取り崩しが発生する見込みです。
             </div>
           ` : ''}
           ${reserveBreachRow ? `
@@ -2009,7 +2064,7 @@ function renderLifeplanDashboard(){
           ` : ''}
           ${nisaDepletedRow ? `
             <div class="score-comment" style="color:var(--expense);font-weight:700;">
-              ⚠ ${nisaDepletedRow.year}年（${nisaDepletedRow.age}歳）に、積立NISAの残高がなくなる（生活防衛資金が枯渇する）見込みです。
+              ⚠ ${nisaDepletedRow.year}年（${nisaDepletedRow.age}歳）に、${withdrawSourceLabel()}の残高がなくなる（生活防衛資金が枯渇する）見込みです。
             </div>
           ` : ''}
           <div class="score-comment">収入の伸び率や積立投資、住宅ローンなどの前提を見直してみましょう。</div>
@@ -2025,6 +2080,7 @@ function renderLifeplanDashboard(){
         <div class="legend">
           <span><i style="background:var(--income)"></i>収入</span>
           <span><i style="background:var(--expense)"></i>支出</span>
+          ${lifeplanRows.some(r => r.bonus > 0) ? '<span><i style="background:rgba(63,122,92,0.35);border:1px dashed var(--income);"></i>退職金</span>' : ''}
           <span><i style="background:#fff;border:1.5px dashed ${ASSET_SERIES_COLORS.total};"></i>資産（貯金＋投資）</span>
         </div>
         <div class="sync-status" id="lifeplanYearDetail" style="margin-top:8px;text-align:center;">年の棒をタップすると、詳しい金額がここに表示されます。</div>
@@ -2084,11 +2140,14 @@ function renderLifeplanCombinedChart(rows){
   let bars = '', hitAreas = '';
   rows.forEach((r,i)=>{
     const gx = scaleX(i);
-    const incH = Math.max(0, r.income)*scale;
+    // 退職金は一度きりの収入なので、通常の収入とは別の薄い色で上に積んで表示する。
+    const bonusH = Math.max(0, r.bonus || 0)*scale;
+    const incH = Math.max(0, r.income - (r.bonus || 0))*scale;
     const expH = Math.max(0, r.expense)*scale;
     const assetH = Math.max(0, assetOf(r))*scale;
     bars += `
       <rect x="${gx}" y="${zeroY-incH}" width="7" height="${incH}" fill="var(--income)" opacity="0.85"/>
+      ${bonusH > 0 ? `<rect x="${gx}" y="${zeroY-incH-bonusH}" width="7" height="${bonusH}" fill="var(--income)" fill-opacity="0.3" stroke="var(--income)" stroke-width="1" stroke-dasharray="2,2"/>` : ''}
       <rect x="${gx+8}" y="${zeroY-expH}" width="7" height="${expH}" fill="var(--expense)" opacity="0.85"/>
       <rect x="${gx}" y="${zeroY}" width="7" height="${assetH}" fill="#ffffff" stroke="${ASSET_SERIES_COLORS.total}" stroke-width="1.5" stroke-dasharray="3,2"/>`;
     hitAreas += `<rect class="lp-bar-hit" data-i="${i}" x="${gx-3}" y="${padTop}" width="${barGroupW}" height="${usable}" fill="transparent" style="cursor:pointer;"/>`;
@@ -2144,12 +2203,15 @@ function showLifeplanYearDetail(r){
     .filter(k => r.invest[k])
     .map(k => `${INVESTMENT_TYPES[k]} ${fmtYen(r.invest[k])}`);
   const breakdown = [`貯金 ${fmtYen(r.cash)}`, ...investParts].join('・');
-  const withdrawalNote = r.tsumitateWithdrawal > 0
-    ? `<br><span style="color:var(--expense);">※ 貯金の下限を下回ったため、積立NISAから ${fmtYen(r.tsumitateWithdrawal)} 取り崩しました</span>`
+  const withdrawalNote = r.investWithdrawal > 0
+    ? `<br><span style="color:var(--expense);">※ 貯金の下限を下回ったため、${Object.keys(r.withdrawalParts).map(k => `${INVESTMENT_TYPES[k]} ${fmtYen(r.withdrawalParts[k])}`).join('・')} を取り崩しました</span>`
     : '';
+  const retireLabel = r.isRetired ? '・リタイア後'
+    : r.selfRetired ? '・自分がリタイア後'
+    : r.spouseRetired ? '・配偶者がリタイア後' : '';
   box.innerHTML = `
-    <strong>${r.year}年（${r.age}歳）${r.isRetired ? '・リタイア後' : ''}</strong><br>
-    収入 ${fmtYen(r.income)}　支出 ${fmtYen(r.expense)}<br>
+    <strong>${r.year}年（${r.age}歳）${retireLabel}</strong><br>
+    収入 ${fmtYen(r.income)}${r.bonus > 0 ? `（うち退職金 ${fmtYen(r.bonus)}）` : ''}　支出 ${fmtYen(r.expense)}<br>
     資産合計 ${fmtYen(r.totalAssets)}（${breakdown}）${withdrawalNote}`;
 }
 
@@ -2555,21 +2617,35 @@ function renderLifeplanSettingsPage(){
       <h2>基本設定</h2>
       <div class="form-row">
         <div>
-          <label>現在の年齢（自分）</label>
+          <label>年齢（自分）</label>
           <input type="number" id="lpAge" min="0" max="99" value="${p.currentAge || ''}" placeholder="例）35">
         </div>
         <div>
-          <label>インフレ率（年率 %）</label>
+          <label>年齢（配偶者）</label>
+          <input type="number" id="lpSpouseAge" min="0" max="99" value="${p.spouseAge || ''}" placeholder="空欄＝同じ">
+        </div>
+        <div>
+          <label>インフレ率（%）</label>
           <input type="number" id="lpInflation" step="0.1" value="${p.inflationRate}">
         </div>
       </div>
       <div class="form-row">
-        <div><label class="label-2line">現在の貯金額（シミュレーション開始時点）</label><input type="number" id="lpInitialCash" value="${p.initialCash||''}" placeholder="0"></div>
-        <div><label class="label-2line">貯金の下限（生活防衛資金）</label><input type="number" id="lpMinCashReserve" value="${p.minCashReserve||''}" placeholder="1000000"></div>
+        <div><label>現在の貯金額（シミュレーション開始時点）</label><input type="number" id="lpInitialCash" value="${p.initialCash||''}" placeholder="0"></div>
+        <div><label>貯金の下限（生活防衛資金）</label><input type="number" id="lpMinCashReserve" value="${p.minCashReserve||''}" placeholder="1000000"></div>
+      </div>
+      <div class="withdraw-types">
+        <label>貯金が下限を下回ったら取り崩す投資枠（左から順）</label>
+        <div class="chk-row">
+          ${WITHDRAW_ORDER.map(t => `
+            <label class="fixed-checkbox-row">
+              <input type="checkbox" class="lp-withdraw-type" value="${t}" ${(p.withdrawTypes||[]).includes(t) ? 'checked' : ''}>
+              ${INVESTMENT_TYPES[t]}
+            </label>`).join('')}
+        </div>
       </div>
       <div class="sync-status">収入は下で自分・配偶者それぞれ入力し、合算してシミュレーションします（いずれも家計簿の実績とは連動しません）。<br>
-      税金・社会保険料の詳細計算はせず、「手取り」を直接入力する簡易方式です。リタイア後は世帯の年金額に切り替わります（年金は今の物価での金額を入力すると、リタイア時点までインフレ換算し、受給開始後は固定のため、物価上昇分だけ実質的に目減りします）。<br>
-      貯金が「貯金の下限」を下回った年は、その分だけ積立NISAから自動的に取り崩して貯金を補います（積立NISAの残高が足りない場合はそこまでの取り崩しになります）。</div>
+      税金・社会保険料の詳細計算はせず、「手取り」を直接入力する簡易方式です。リタイアすると、その人の収入は年金に切り替わります（年金は今の物価での金額を入力すると、リタイア時点までインフレ換算し、受給開始後は固定のため、物価上昇分だけ実質的に目減りします）。<br>
+      貯金が「貯金の下限」を下回った年は、その分だけ上で選んだ投資枠から自動的に取り崩して貯金を補います（残高が足りない場合はそこまでの取り崩しになります。iDeCoと子供名義の資産は対象外です）。</div>
     </div>
 
     ${renderIncomeCard('self')}
@@ -2588,13 +2664,17 @@ function renderLifeplanSettingsPage(){
         <div><label>老後の生活費（年額・今の物価での金額）</label><input type="number" id="lpRetireLiving" value="${p.retirement.livingCostAnnual||''}" placeholder="0"></div>
       </div>
       <div class="form-row">
-        <div><label>リタイア年齢</label><input type="number" id="lpRetireAge" value="${p.retirement.retireAge}"></div>
+        <div><label>リタイア年齢（自分）</label><input type="number" id="lpRetireAge" value="${p.retirement.retireAge}"></div>
+        <div><label>リタイア年齢（配偶者）</label><input type="number" id="lpSpouseRetireAge" value="${p.retirement.spouseRetireAge || ''}" placeholder="空欄＝自分と同じ"></div>
+      </div>
+      <div class="form-row">
+        <div><label>年金見込み額のうち、配偶者分の割合（%）</label><input type="number" id="lpSpouseShare" min="0" max="100" value="${p.retirement.spouseShare ?? 50}"></div>
       </div>
       <div class="form-row">
         <div><label>退職金の見込み額</label><input type="number" id="lpRetireBonus" value="${p.retirementBonus.amount||''}" placeholder="0"></div>
         <div><label>退職金の受取年齢</label><input type="number" id="lpRetireBonusAge" value="${p.retirementBonus.age}"></div>
       </div>
-      <div class="sync-status">リタイア後は、上の「生活費の内訳」の内訳を使わず、「老後の生活費」1つに切り替わります。退職金は受取年齢の年に一度だけ収入として加算されます。</div>
+      <div class="sync-status">年金見込み額は世帯の合計で、配偶者分の割合で二人に分けます。それぞれのリタイア年齢から受け取り始めます。二人ともリタイアすると、上の「生活費の内訳」を使わず、「老後の生活費」1つに切り替わります。退職金は受取年齢（自分）の年に一度だけ収入として加算され、グラフでは通常の収入と別の色で表示します。</div>
     </div>
 
     <div class="card">
@@ -2652,11 +2732,102 @@ function renderLifeplanSettingsPage(){
 
   document.getElementById('lpSaveBtn').onclick = ()=>{
     collectLifeplanFormValues();
+    document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+    const errs = validateLifeplan(lifeplan);
+    if(errs.length){
+      showLifeplanErrors(errs);
+      return;
+    }
     persistLifeplan();
     lifeplanView = 'dashboard';
     showToast('ライフプラン設定を保存しました');
     renderLifeplanTab();
   };
+}
+
+/* ライフプラン設定の入力チェック。明らかにおかしい値（マイナスの金額、あり得ない年齢や
+   利率など）を保存前に止める。[{ msg, id }] を返し、空なら問題なし。 */
+function validateLifeplan(p){
+  const errs = [];
+  const bad = (msg, id) => errs.push({ msg, id });
+  const isNum = v => typeof v === 'number' && isFinite(v);
+  const range = (v, lo, hi) => isNum(v) && v >= lo && v <= hi;
+  const thisYear = new Date().getFullYear();
+
+  if(p.currentAge != null && !range(p.currentAge, 1, 99)) bad('年齢（自分）は1〜99で入力してください', 'lpAge');
+  if(p.spouseAge != null && !range(p.spouseAge, 1, 99)) bad('年齢（配偶者）は1〜99で入力してください', 'lpSpouseAge');
+  if(!range(p.inflationRate, -5, 20)) bad('インフレ率は−5〜20%の範囲で入力してください', 'lpInflation');
+  if(!range(p.initialCash, 0, 1e10)) bad('現在の貯金額は0以上で入力してください', 'lpInitialCash');
+  if(!range(p.minCashReserve, 0, 1e10)) bad('貯金の下限は0以上で入力してください', 'lpMinCashReserve');
+
+  [['self', 'lpSelf', '自分'], ['spouse', 'lpSpouse', '配偶者']].forEach(([k, pre, name])=>{
+    const person = p.baseline[k];
+    if(!range(person.monthlyIncome, 0, 1e8)) bad(`${name}の月あたりの手取り収入は0以上で入力してください`, `${pre}Income`);
+    if(person.incomeGrowthMode === 'fixed'){
+      if(!range(person.incomeGrowthFixed, -1e7, 1e7)) bad(`${name}の昇給額（円/年）が大きすぎます`, `${pre}GrowthFixed`);
+    } else if(!range(person.incomeGrowthRate, -30, 50)){
+      bad(`${name}の収入の伸び率は−30〜50%の範囲で入力してください`, `${pre}GrowthRate`);
+    }
+    (person.leaves || []).forEach(l=>{
+      if(!range(l.monthlyIncome, 0, 1e8) || !range(l.years, 1, 30)) bad(`${name}の育休などの期間の設定が正しくありません`);
+    });
+  });
+
+  const rt = p.retirement;
+  if(!range(rt.retireAge, 30, 100)) bad('リタイア年齢（自分）は30〜100で入力してください', 'lpRetireAge');
+  if(rt.spouseRetireAge != null && !range(rt.spouseRetireAge, 30, 100)) bad('リタイア年齢（配偶者）は30〜100で入力してください', 'lpSpouseRetireAge');
+  if(!range(rt.pensionAnnual, 0, 1e9)) bad('年金見込み額は0以上で入力してください', 'lpPension');
+  if(!range(rt.livingCostAnnual, 0, 1e9)) bad('老後の生活費は0以上で入力してください', 'lpRetireLiving');
+  if(!range(p.retirementBonus.amount, 0, 1e10)) bad('退職金の見込み額は0以上で入力してください', 'lpRetireBonus');
+  if(!range(p.retirementBonus.age, 30, 100)) bad('退職金の受取年齢は30〜100で入力してください', 'lpRetireBonusAge');
+
+  const META_RANGES = {
+    lpMortgageBalance: [0, 1e9], lpMortgageYears: [0, 60], lpMortgageRate: [0, 20],
+    lpRePrice: [0, 2e9], lpReRate: [-20, 20], lpCarCycle: [0, 40], lpCarCost: [0, 5e7],
+  };
+  EXPENSE_CATEGORIES.forEach(cat=>{
+    cat.fields.forEach(f=>{
+      const v = expenseFieldValue(p, f);
+      const key = f.path[f.path.length - 1];
+      let lo = 0, hi = f.unit === 'monthly' ? 5e7 : 1e9;
+      if(META_RANGES[f.id]) [lo, hi] = META_RANGES[f.id];
+      else if(f.unit === 'meta'){
+        if(key === 'childIndependenceAge'){ lo = 15; hi = 30; }
+        else if(/Age$/.test(key)) hi = 100;
+        else if(key === 'years') hi = 60;
+      }
+      if(!range(v, lo, hi)) bad(hi >= 1e6 ? `「${f.label}」は0以上の、大きすぎない金額で入力してください` : `「${f.label}」は${lo}〜${hi}の範囲で入力してください`, f.id);
+    });
+  });
+
+  p.children.forEach(c=>{
+    if(!range(c.birthYear, 1980, thisYear + 1)) bad(`${c.name}の生まれ年が正しくありません`);
+  });
+  p.investments.forEach(inv=>{
+    const name = inv.name || INVESTMENT_TYPES[inv.type];
+    if(!range(inv.returnRate, -20, 30)) bad(`「${name}」の期待年率は−20〜30%の範囲で入力してください`);
+    if(!range(inv.monthlyAmount, 0, 1e8) || !range(inv.startingBalance || 0, 0, 1e10)) bad(`「${name}」の金額が正しくありません`);
+  });
+  p.insurances.forEach(i=>{ if(!range(i.annualPremium, 0, 1e8)) bad(`「${i.name}」の保険料が正しくありません`); });
+  p.otherEvents.forEach(ev=>{
+    if(!range(ev.year, thisYear - 5, thisYear + 100) || !range(ev.amount, 0, 1e10)) bad(`「${ev.name}」の年または金額が正しくありません`);
+  });
+  return errs;
+}
+
+function showLifeplanErrors(errs){
+  errs.forEach(e=>{
+    const el = e.id && document.getElementById(e.id);
+    if(!el) return;
+    el.classList.add('input-error');
+    el.addEventListener('input', ()=> el.classList.remove('input-error'), { once: true });
+  });
+  showToast(`入力を確認してください：${errs[0].msg}${errs.length > 1 ? `（ほか${errs.length - 1}件）` : ''}`, 4500);
+  const first = errs.map(e => e.id && document.getElementById(e.id)).find(el => el && el.offsetParent !== null);
+  if(first){
+    first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    first.focus({ preventScroll: true });
+  }
 }
 
 /* フォーム上の未保存の値を lifeplan オブジェクトへ反映する。
@@ -2680,6 +2851,13 @@ function collectLifeplanFormValues(){
     person.incomeGrowthFixed = parseFloat(val(`${prefix}GrowthFixed`).value) || 0;
   });
   collectExpenseCategoryValues(p);
+  const spouseAgeVal = parseInt(val('lpSpouseAge').value);
+  p.spouseAge = spouseAgeVal > 0 ? spouseAgeVal : null;
+  p.withdrawTypes = Array.from(document.querySelectorAll('.lp-withdraw-type:checked')).map(x => x.value);
+  const spouseRetireVal = parseInt(val('lpSpouseRetireAge').value);
+  p.retirement.spouseRetireAge = spouseRetireVal > 0 ? spouseRetireVal : null;
+  const shareVal = parseFloat(val('lpSpouseShare').value);
+  p.retirement.spouseShare = isNaN(shareVal) ? 50 : Math.min(100, Math.max(0, shareVal));
   p.retirement.pensionAnnual = parseFloat(val('lpPension').value) || 0;
   p.retirement.livingCostAnnual = parseFloat(val('lpRetireLiving').value) || 0;
   p.retirement.retireAge = parseInt(val('lpRetireAge').value) || 65;
@@ -3019,6 +3197,7 @@ function wireFixedForm(editing){
       showToast('費目と金額を確認してください');
       return;
     }
+    if(amount > 1000000000){ showToast('金額が大きすぎます（10億円以下で入力してください）', 3500); return; }
     Object.assign(editing, { type: curType, person, category, amount, dayOfMonth: day, memo });
     persistFixed();
     showToast('固定費を更新しました');
