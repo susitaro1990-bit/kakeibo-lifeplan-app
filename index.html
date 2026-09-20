@@ -80,6 +80,7 @@
     box-shadow:var(--shadow);
     transition:background .15s, color .15s, border-color .15s;
   }
+  button:focus-visible, [role=button]:focus-visible, .tab-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
   .icon-btn{position:relative;}
   .icon-btn.has-pending::after{
     content:'';position:absolute;top:3px;right:3px;width:9px;height:9px;border-radius:50%;
@@ -324,16 +325,35 @@
   .preset-btn:hover{background:var(--accent-dim);color:var(--accent);border-color:var(--accent);}
 
   input.input-error, select.input-error{border-color:var(--expense);background:#fdf3f1;}
+  .jump-row{margin-bottom:14px;flex-wrap:nowrap;}
+  .jump-row .preset-btn{flex:1;padding:7px 2px;text-align:center;white-space:nowrap;}
+  #mainArea > .card{scroll-margin-top:128px;}
+  #lpSaveBtn{position:sticky;bottom:14px;z-index:6;box-shadow:0 6px 18px rgba(20,30,25,0.28);}
   .withdraw-types{margin:4px 0 10px;}
   .withdraw-types .chk-row{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:2px;}
   .summary-note{font-size:11.5px;color:var(--text-dim);text-align:center;margin:-6px 0 14px;}
-  .pie-summary{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-dim);margin-bottom:10px;flex-wrap:wrap;}
+  .pie-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:4px 12px;font-size:12px;color:var(--text-dim);margin-bottom:12px;}
   .pie-summary b{font-size:13.5px;color:var(--text);}
   .pie-summary b.income{color:var(--income);} .pie-summary b.expense{color:var(--expense);}
-  .pie-wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .pie-wrap{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;}
   .pie-svg{width:160px;height:160px;flex-shrink:0;margin:0 auto;}
   .pie-legend{flex:1;min-width:190px;}
-  .pie-legend-row{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 0;}
+  .pie-legend-row{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:5px 6px;margin:0 -6px;border-radius:8px;cursor:pointer;}
+  .pie-legend-row.sel{background:var(--accent-dim);}
+  .pie-legend-row:focus-visible{outline:2px solid var(--accent);}
+  .pie-slice{cursor:pointer;transition:opacity .15s;}
+  .pie-svg.has-sel .pie-slice:not(.sel){opacity:.3;}
+  .pie-detail{margin-top:10px;padding:10px 12px;background:#f6f8f7;border-radius:10px;font-size:12.5px;line-height:1.6;color:var(--text-dim);}
+  .pie-detail b{color:var(--text);}
+  .pie-parts{display:flex;flex-wrap:wrap;gap:2px 14px;margin-top:4px;font-size:12px;color:var(--text-dim);}
+  .analysis-views{margin-bottom:14px;}
+  .month-nav{display:flex;gap:8px;align-items:stretch;}
+  .month-nav input{flex:1;min-width:0;}
+  .month-nav button{
+    width:44px;flex-shrink:0;border:1px solid var(--border);border-radius:9px;background:#fbfcfb;
+    font-size:22px;line-height:1;color:var(--text-dim);cursor:pointer;
+  }
+  .month-nav button:hover{background:var(--accent-dim);color:var(--accent);border-color:var(--accent);}
   .pie-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
   .pie-name{flex:1;font-weight:600;}
   .pie-val{font-weight:700;} .pie-pct{margin-left:6px;font-size:11px;font-weight:600;color:var(--text-dim);}
@@ -386,14 +406,14 @@
         </div>
       </div>
       <div class="icon-group">
-        <button class="icon-btn" id="btnSyncNow" title="最新のデータを取得">
+        <button class="icon-btn" id="btnSyncNow" title="最新のデータを取得" aria-label="最新のデータを取得（同期）">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="23 4 23 10 17 10"></polyline>
             <polyline points="1 20 1 14 7 14"></polyline>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
           </svg>
         </button>
-        <button class="icon-btn" id="btnSettings" title="設定">
+        <button class="icon-btn" id="btnSettings" title="設定" aria-label="設定を開く">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -401,10 +421,10 @@
         </button>
       </div>
     </div>
-    <nav class="tabs">
-      <button class="tab-btn active" data-tab="ledger">家計簿入力</button>
-      <button class="tab-btn" data-tab="analysis">分析</button>
-      <button class="tab-btn" data-tab="lifeplan">ライフプラン</button>
+    <nav class="tabs" role="tablist" aria-label="画面の切り替え">
+      <button class="tab-btn active" data-tab="ledger" role="tab" aria-selected="true">家計簿入力</button>
+      <button class="tab-btn" data-tab="analysis" role="tab" aria-selected="false">分析</button>
+      <button class="tab-btn" data-tab="lifeplan" role="tab" aria-selected="false">ライフプラン</button>
     </nav>
   </div>
 </header>
@@ -414,7 +434,7 @@
 </div>
 
 <div id="modalRoot"></div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 /* =========================================================
@@ -810,6 +830,29 @@ function countFixedLogMonths(l){
    互いの結果で状態を上書きし合い、画面が更新されないことが
    あったため、すでに取得中なら新しく fetch せず同じ Promise を
    共有して待つようにする。 */
+const LAST_SYNC_KEY = 'kakeibo_last_sync_v1';
+function lastSyncLabel(){
+  const iso = localStorage.getItem(LAST_SYNC_KEY);
+  if(!iso) return 'まだ同期していません';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return 'まだ同期していません';
+  return `${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+/* サーバーの全件を取得する。合言葉が URL に残らないよう、まず POST（readAll）で取得し、
+   まだ readAll に対応していない古い GAS のときだけ、従来の GET に切り替える。 */
+async function fetchServerSnapshot(){
+  const res = await fetch(config.gasUrl, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain' },
+    body: JSON.stringify({ action:'readAll', payload:{}, secret: config.gasSecret || '' })
+  });
+  const data = await res.json().catch(()=>null);
+  if(data && data.status === 'ok') return data;
+  if(!(data && /unknown action/.test(data.error || ''))) return data; // 合言葉違いなどは、そのまま呼び出し側へ
+  const url = config.gasUrl + '?secret=' + encodeURIComponent(config.gasSecret || '');
+  return await (await fetch(url, { method:'GET' })).json();
+}
+
 let gasPullPromise = null;
 function pullFromGAS(){
   if(!config.gasUrl) return Promise.resolve(true);
@@ -822,9 +865,7 @@ async function pullFromGASOnce(){
     await flushOutbox(); // まず未送信分を送る（送れなければ、下で取得結果に重ねて残す）
     pullInFlight = true;
     opsDuringPull = [];
-    const url = config.gasUrl + '?secret=' + encodeURIComponent(config.gasSecret || '');
-    const res = await fetch(url, { method:'GET' });
-    const data = await res.json();
+    const data = await fetchServerSnapshot();
     if(!data || data.status !== 'ok') throw new Error((data && data.error) || 'invalid response');
 
     // 取得中に発生した変更も含めて、まだ取得結果に反映されていない変更を集める
@@ -888,6 +929,7 @@ async function pullFromGASOnce(){
     else if(activeTab === 'lifeplan') renderLifeplanTab();
     else renderAll();
     syncFailureNotified = false;
+    localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
     showToast(outbox.length
       ? `同期しました（未送信の変更が${outbox.length}件残っています）`
       : 'スプレッドシートと同期しました');
@@ -1038,6 +1080,7 @@ const state = {
   analysisEnd: null, // 分析タブ: 期間の終了月（YYYY-MM）
   analysisPerson: 'combined', // 分析タブ: 'self' | 'spouse' | 'combined'
   pieMonth: null, // 分析タブ: 計画と実績の円グラフで見る月（YYYY-MM）
+  analysisView: 'month', // 分析タブ: 'month'（月別の比較）| 'period'（期間の集計）
 };
 
 function setCurrentPerson(p){
@@ -1507,42 +1550,86 @@ const LEDGER_TO_PIE_GROUP = {
   '水道代':'光熱・水道','医療費':'保健医療・保険','保険料':'保健医療・保険','教育費':'教育','積立投資':'積立投資','その他':'その他'
 };
 
-function renderDonut(groups, centerLabel){
+// 円グラフの各項目の詳細（タップで表示）。{ plan: {項目名: {value, pct, parts}}, actual: {...} }
+let pieDetailData = { plan: {}, actual: {} };
+
+function renderDonut(groups, centerLabel, side, partsMap){
   const items = Object.keys(groups).map(k=>({ name:k, value:groups[k] })).filter(x=>x.value>0).sort((a,b)=>b.value-a.value);
   const total = items.reduce((s,x)=>s+x.value, 0);
   if(!total) return '<div class="empty-note">支出データがありません</div>';
+  pieDetailData[side] = {};
+  items.forEach(x=>{
+    const parts = partsMap && partsMap[x.name]
+      ? Object.keys(partsMap[x.name]).map(n=>({ name:n, value:partsMap[x.name][n] })).sort((a,b)=>b.value-a.value)
+      : [];
+    pieDetailData[side][x.name] = { value:x.value, pct:x.value/total*100, parts };
+  });
   const R = 70, r = 42, cx = 80, cy = 80;
   let angle = -Math.PI/2;
   const paths = items.map(x=>{
     const color = PIE_COLORS[x.name] || '#a3aca7';
-    if(items.length === 1) return `<circle cx="${cx}" cy="${cy}" r="${(R+r)/2}" fill="none" stroke="${color}" stroke-width="${R-r}"/>`;
+    const attrs = `class="pie-slice" data-side="${side}" data-name="${escapeHtml(x.name)}"`;
+    if(items.length === 1) return `<circle ${attrs} cx="${cx}" cy="${cy}" r="${(R+r)/2}" fill="none" stroke="${color}" stroke-width="${R-r}"/>`;
     const a0 = angle, a1 = angle + (x.value/total) * Math.PI*2;
     angle = a1;
     const large = (a1 - a0) > Math.PI ? 1 : 0;
     const pt = (rad, a) => `${(cx + rad*Math.cos(a)).toFixed(2)},${(cy + rad*Math.sin(a)).toFixed(2)}`;
-    return `<path d="M${pt(R,a0)} A${R},${R} 0 ${large} 1 ${pt(R,a1)} L${pt(r,a1)} A${r},${r} 0 ${large} 0 ${pt(r,a0)} Z" fill="${color}"/>`;
+    return `<path ${attrs} d="M${pt(R,a0)} A${R},${R} 0 ${large} 1 ${pt(R,a1)} L${pt(r,a1)} A${r},${r} 0 ${large} 0 ${pt(r,a0)} Z" fill="${color}"/>`;
   }).join('');
   const legend = items.map(x=>`
-    <div class="pie-legend-row">
+    <div class="pie-legend-row" role="button" tabindex="0" data-side="${side}" data-name="${escapeHtml(x.name)}">
       <span class="pie-dot" style="background:${PIE_COLORS[x.name] || '#a3aca7'}"></span>
       <span class="pie-name">${escapeHtml(x.name)}</span>
       <span class="pie-val">${fmtYen(x.value)}<span class="pie-pct">${(x.value/total*100).toFixed(1)}%</span></span>
     </div>`).join('');
   return `
     <div class="pie-wrap">
-      <svg viewBox="0 0 160 160" class="pie-svg" role="img" aria-label="支出の内訳">
+      <svg viewBox="0 0 160 160" class="pie-svg" data-side="${side}" role="img" aria-label="支出の内訳">
         ${paths}
         <text x="${cx}" y="${cy-3}" text-anchor="middle" font-size="9" fill="var(--text-dim)">${centerLabel || '支出合計'}</text>
         <text x="${cx}" y="${cy+11}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text)">${fmtYen(total)}</text>
       </svg>
       <div class="pie-legend">${legend}</div>
-    </div>`;
+    </div>
+    <div class="pie-detail" data-side="${side}">円グラフや項目をタップすると、内訳が表示されます。</div>`;
+}
+
+/* 円グラフの項目をタップしたとき、選んだ項目を強調して内訳を表示する（もう一度タップで解除）。 */
+function selectPieItem(side, name){
+  const box = document.querySelector(`.pie-detail[data-side="${side}"]`);
+  const svg = document.querySelector(`.pie-svg[data-side="${side}"]`);
+  const d = pieDetailData[side] && pieDetailData[side][name];
+  if(!box || !svg || !d) return;
+  const already = box.dataset.sel === name;
+  box.dataset.sel = already ? '' : name;
+  document.querySelectorAll(`.pie-slice[data-side="${side}"], .pie-legend-row[data-side="${side}"]`).forEach(el=>{
+    el.classList.toggle('sel', !already && el.dataset.name === name);
+  });
+  svg.classList.toggle('has-sel', !already);
+  if(already){
+    box.innerHTML = '円グラフや項目をタップすると、内訳が表示されます。';
+    return;
+  }
+  box.innerHTML = `<b>${escapeHtml(name)}</b>　${fmtYen(d.value)}（${d.pct.toFixed(1)}%）`
+    + (d.parts.length > 1 || (d.parts.length === 1 && d.parts[0].name !== name)
+      ? `<div class="pie-parts">${d.parts.map(p=>`<span>${escapeHtml(p.name)} ${fmtYen(p.value)}</span>`).join('')}</div>` : '');
+}
+function wirePieInteractions(){
+  document.querySelectorAll('.pie-slice, .pie-legend-row').forEach(el=>{
+    el.addEventListener('click', ()=> selectPieItem(el.dataset.side, el.dataset.name));
+    if(el.classList.contains('pie-legend-row')){
+      el.addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); selectPieItem(el.dataset.side, el.dataset.name); }
+      });
+    }
+  });
 }
 
 function renderPieComparisonCards(){
   if(!state.pieMonth) state.pieMonth = todayStr().slice(0,7);
   const mk = state.pieMonth;
   const year = parseInt(mk.slice(0,4), 10);
+  pieDetailData = { plan: {}, actual: {} };
 
   const planRows = computeLifePlanProjection();
   const planRow = planRows ? planRows.find(r => r.year === year) : null;
@@ -1553,7 +1640,12 @@ function renderPieComparisonCards(){
     planBody = `<div class="empty-note">${year}年はライフプランの計画期間外です。</div>`;
   } else {
     const groups = {};
-    Object.keys(planRow.expenseGroups).forEach(k=>{ groups[k] = planRow.expenseGroups[k] / 12; });
+    const parts = {};
+    Object.keys(planRow.expenseGroups).forEach(k=>{
+      groups[k] = planRow.expenseGroups[k] / 12;
+      parts[k] = {};
+      Object.keys(planRow.expenseParts[k] || {}).forEach(n=>{ parts[k][n] = planRow.expenseParts[k][n] / 12; });
+    });
     const inc = planRow.income / 12, exp = planRow.expense / 12, inv = planRow.investContribution / 12;
     const remain = inc - exp - inv;
     if(inv > 0) groups['積立投資'] = inv;
@@ -1565,11 +1657,12 @@ function renderPieComparisonCards(){
         <span>積立投資 <b>${fmtYen(inv)}</b></span>
         <span>${remain >= 0 ? '貯金（残り）' : '不足'} <b class="${remain >= 0 ? '' : 'expense'}">${fmtYen(Math.abs(remain))}</b></span>
       </div>
-      ${renderDonut(groups, remain >= 0 ? '収入' : '支出＋積立')}
+      ${renderDonut(groups, remain >= 0 ? '収入' : '支出＋積立', 'plan', parts)}
       <div class="sync-status">${year}年のライフプランの年額を12で割った月平均です（年が変わると、その年の計画に切り替わります）。</div>`;
   }
 
   const groups = {};
+  const parts = {};
   let inc = 0, exp = 0, actualInv = 0;
   entries.forEach(e=>{
     if(monthKey(e.date) !== mk) return;
@@ -1578,6 +1671,8 @@ function renderPieComparisonCards(){
     exp += e.amount;
     const g = LEDGER_TO_PIE_GROUP[e.category] || 'その他';
     groups[g] = (groups[g]||0) + e.amount;
+    if(!parts[g]) parts[g] = {};
+    parts[g][e.category] = (parts[g][e.category]||0) + e.amount;
   });
   const actualRemain = inc - exp - actualInv;
   if(actualRemain > 0) groups['貯金（残り）'] = actualRemain;
@@ -1588,14 +1683,18 @@ function renderPieComparisonCards(){
       <span>積立投資 <b>${fmtYen(actualInv)}</b></span>
       <span>${actualRemain >= 0 ? '貯金（残り）' : '不足'} <b class="${actualRemain >= 0 ? '' : 'expense'}">${fmtYen(Math.abs(actualRemain))}</b></span>
     </div>
-    ${renderDonut(groups, actualRemain >= 0 ? '収入' : '支出＋積立')}
+    ${renderDonut(groups, actualRemain >= 0 ? '収入' : '支出＋積立', 'actual', parts)}
     <div class="sync-status">家計簿に記録した${monthLabel(mk)}の実績です（ホスト・ゲスト合算）。</div>`;
 
   return `
     <div class="card">
       <h2>計画と実績の比較（月別）</h2>
-      <label>比較する月</label>
-      <input type="month" id="pieMonthInput" value="${mk}">
+      <label for="pieMonthInput">比較する月</label>
+      <div class="month-nav">
+        <button type="button" id="pieMonthPrev" aria-label="前の月へ">‹</button>
+        <input type="month" id="pieMonthInput" value="${mk}">
+        <button type="button" id="pieMonthNext" aria-label="次の月へ">›</button>
+      </div>
     </div>
     <div class="card"><h2>計画（ライフプラン）${monthLabel(mk)}</h2>${planBody}</div>
     <div class="card"><h2>実績（家計簿）${monthLabel(mk)}</h2>${actualBody}</div>`;
@@ -1603,6 +1702,30 @@ function renderPieComparisonCards(){
 
 function renderAnalysisTab(){
   const main = document.getElementById('mainArea');
+  const viewToggleHtml = `
+    <div class="type-toggle analysis-views" id="analysisViewToggle" role="tablist">
+      ${[['month','月別の比較'],['period','期間の集計']].map(([key,label])=>
+        `<button type="button" role="tab" aria-selected="${state.analysisView===key}" data-view="${key}" class="${state.analysisView===key?'active':''}">${label}</button>`
+      ).join('')}
+    </div>`;
+  const wireViewToggle = ()=>{
+    document.querySelectorAll('#analysisViewToggle button').forEach(btn=>{
+      btn.onclick = ()=>{ state.analysisView = btn.dataset.view; renderAnalysisTab(); };
+    });
+  };
+
+  if(state.analysisView !== 'period'){
+    main.innerHTML = viewToggleHtml + renderPieComparisonCards();
+    wireViewToggle();
+    document.getElementById('pieMonthInput').onchange = (e)=>{
+      if(e.target.value){ state.pieMonth = e.target.value; renderAnalysisTab(); }
+    };
+    document.getElementById('pieMonthPrev').onclick = ()=>{ state.pieMonth = prevMonth(state.pieMonth); renderAnalysisTab(); };
+    document.getElementById('pieMonthNext').onclick = ()=>{ state.pieMonth = nextMonth(state.pieMonth); renderAnalysisTab(); };
+    wirePieInteractions();
+    return;
+  }
+
   if(!state.analysisStart || !state.analysisEnd){
     const end = todayStr().slice(0,7);
     let start = end;
@@ -1636,7 +1759,7 @@ function renderAnalysisTab(){
   const incomeHtml = incomeRows.length ? incomeRows.map(rowHtml).join('') : '<div class="empty-note">この期間の収入データがありません</div>';
 
   main.innerHTML = `
-    ${renderPieComparisonCards()}
+    ${viewToggleHtml}
 
     <div class="card">
       <h2>分析期間</h2>
@@ -1675,9 +1798,7 @@ function renderAnalysisTab(){
       <div>${incomeHtml}</div>
     </div>
   `;
-  document.getElementById('pieMonthInput').onchange = (e)=>{
-    if(e.target.value){ state.pieMonth = e.target.value; renderAnalysisTab(); }
-  };
+  wireViewToggle();
 
   document.querySelectorAll('.preset-btn').forEach(btn=>{
     btn.onclick = ()=> setAnalysisPreset(btn.dataset.preset);
@@ -1889,32 +2010,44 @@ function computeLifePlanProjection(){
     const netCashFlow = income - totalExpense - investContribution;
     cash += netCashFlow;
 
-    // 円グラフ用の支出内訳（年額・インフレ反映済み）。家計簿の費目と比べやすい区分にまとめる。
+    // 円グラフ用の支出内訳（年額・インフレ反映済み）。家計簿の費目と比べやすい区分にまとめ、
+    // 各区分がどの設定項目から来た金額かも expenseParts に残す（円グラフのタップ表示用）。
     const expenseGroups = {};
-    const addGroup = (k, v) => { if(v > 0) expenseGroups[k] = (expenseGroups[k]||0) + v; };
+    const expenseParts = {};
+    const addGroup = (k, v, src) => {
+      if(!(v > 0)) return;
+      expenseGroups[k] = (expenseGroups[k]||0) + v;
+      if(!expenseParts[k]) expenseParts[k] = {};
+      expenseParts[k][src || k] = (expenseParts[k][src || k]||0) + v;
+    };
     const gf = inflationFactor;
     if(isRetired){
-      addGroup('老後の生活費', lifeplan.retirement.livingCostAnnual * gf);
+      addGroup('老後の生活費', lifeplan.retirement.livingCostAnnual * gf, '老後の生活費');
     } else {
       const nKids = activeChildrenCount(year);
-      addGroup('食費', (ex.foodMonthly||0) * 12 * gf);
-      addGroup('光熱・水道', (ex.utilitiesMonthly||0) * 12 * gf);
-      addGroup('家具・日用品', (ex.furnitureMonthly||0) * 12 * gf);
-      addGroup('被服・美容', (ex.clothingMonthly||0) * 12 * gf);
-      addGroup('交通・通信', ((ex.transportMonthly||0) + (ex.communicationMonthly||0) + (ex.carLoanParkingMonthly||0)) * 12 * gf);
-      addGroup('教養娯楽', ((ex.hobbyMonthly||0) * 12 + (ex.travelAnnual||0)) * gf);
-      addGroup('交際費', (ex.socialMonthly||0) * 12 * gf);
-      addGroup('お小遣い・子供', ((ex.selfAllowance||0) + (ex.spouseAllowance||0) + nKids * ((ex.childAllowancePerChild||0) + (ex.childLivingCostPerChild||0))) * 12 * gf);
-      addGroup('その他', (ex.contingencyMonthly||0) * 12 * gf);
-      addGroup('保健医療・保険', (ex.medicalMonthly||0) * 12 * gf);
+      addGroup('食費', (ex.foodMonthly||0) * 12 * gf, '食費');
+      addGroup('光熱・水道', (ex.utilitiesMonthly||0) * 12 * gf, '光熱・水道費');
+      addGroup('家具・日用品', (ex.furnitureMonthly||0) * 12 * gf, '家具・家事用品');
+      addGroup('被服・美容', (ex.clothingMonthly||0) * 12 * gf, '被服及び履物');
+      addGroup('交通・通信', (ex.transportMonthly||0) * 12 * gf, '交通費');
+      addGroup('交通・通信', (ex.communicationMonthly||0) * 12 * gf, '通信費');
+      addGroup('交通・通信', (ex.carLoanParkingMonthly||0) * 12 * gf, '車のローン・駐車場');
+      addGroup('教養娯楽', (ex.hobbyMonthly||0) * 12 * gf, '趣味・娯楽');
+      addGroup('教養娯楽', (ex.travelAnnual||0) * gf, '旅行');
+      addGroup('交際費', (ex.socialMonthly||0) * 12 * gf, '交際費');
+      addGroup('お小遣い・子供', ((ex.selfAllowance||0) + (ex.spouseAllowance||0)) * 12 * gf, '夫婦のお小遣い');
+      addGroup('お小遣い・子供', nKids * ((ex.childAllowancePerChild||0) + (ex.childLivingCostPerChild||0)) * 12 * gf, '子供のお小遣い・生活費');
+      addGroup('その他', (ex.contingencyMonthly||0) * 12 * gf, '予備費');
+      addGroup('保健医療・保険', (ex.medicalMonthly||0) * 12 * gf, '医療費');
     }
-    addGroup('保健医療・保険', insuranceCost);
-    addGroup('交通・通信', carCost);
-    addGroup('住居', mortgageCost);
-    addGroup('教育', eduCost);
-    addGroup('介護・仕送り', parentCareCost + remittanceCost);
-    addGroup('交際費', ceremonyCost);
-    addGroup('その他', eventCost);
+    addGroup('保健医療・保険', insuranceCost, '保険料');
+    addGroup('交通・通信', carCost, '車の買い替え');
+    addGroup('住居', mortgageCost, '住宅ローン');
+    addGroup('教育', eduCost, '教育費');
+    addGroup('介護・仕送り', parentCareCost, '親の介護');
+    addGroup('介護・仕送り', remittanceCost, '仕送り');
+    addGroup('交際費', ceremonyCost, '冠婚葬祭');
+    addGroup('その他', eventCost, 'その他のイベント費用');
 
     // 貯金が下限（生活防衛資金）を下回ったら、その分だけ設定で選んだ投資枠から
     // 取り崩して補う。貯金がマイナスのまま資産だけ増え続けるのは非現実的なため
@@ -1947,7 +2080,7 @@ function computeLifePlanProjection(){
     // （不動産純資産は realEstateNet として別途保持し、参考値として扱う）。
     const totalAssets = cash + investTotals.nisa_tsumitate + investTotals.nisa_growth + investTotals.ideco + investTotals.taxable + investTotals.child_nisa;
 
-    rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired, selfRetired, spouseRetired, bonus, investWithdrawal, withdrawalParts, belowReserve, expenseGroups, investContribution });
+    rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired, selfRetired, spouseRetired, bonus, investWithdrawal, withdrawalParts, belowReserve, expenseGroups, expenseParts, investContribution });
   }
   return rows;
 }
@@ -2612,6 +2745,10 @@ function renderLifeplanSettingsPage(){
 
   main.innerHTML = `
     <button type="button" class="cancel-btn" id="lpBackLink" style="width:100%;margin-bottom:14px;">← 保存せずダッシュボードに戻る</button>
+    <div class="preset-row jump-row" id="lpJumpRow" role="group" aria-label="項目へジャンプ">
+      ${[['基本',0],['収入',1],['生活費',3],['リタイア',4],['投資',5]].map(([label, idx]) =>
+        `<button type="button" class="preset-btn" data-jump="${idx}">${label}</button>`).join('')}
+    </div>
 
     <div class="card">
       <h2>基本設定</h2>
@@ -2707,6 +2844,12 @@ function renderLifeplanSettingsPage(){
   `;
 
   document.getElementById('lpBackLink').onclick = backFromLifeplanSettings;
+  document.querySelectorAll('#lpJumpRow [data-jump]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const card = document.querySelectorAll('#mainArea > .card')[+btn.dataset.jump];
+      if(card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+  });
 
   document.getElementById('btnAddInvestment').onclick = ()=>{
     const type = document.getElementById('newInvType').value;
@@ -2971,6 +3114,7 @@ function openSettingsModal(){
           <input type="text" id="gasUrlInput" value="${escapeAttr(config.gasUrl)}" placeholder="https://script.google.com/macros/s/.../exec">
           <label>合言葉（GAS側のSECRET_KEYと同じ文字列）</label>
           <input type="text" id="gasSecretInput" value="${escapeAttr(config.gasSecret||'')}" placeholder="合言葉を入力">
+          ${config.gasUrl ? `<div class="sync-status" id="syncStateLine">最終同期：${lastSyncLabel()}　／　未送信の変更：${outbox.length}件</div>` : ''}
           <div class="sync-status">
             未設定の間はローカル保存のみで動作します（<code>console.log</code>に同期予定の内容を出力する疎通確認ダミー）。<br>
             GASのWebアプリを公開したら、URLと合言葉をここに貼るだけで書き込みが有効になります。
@@ -3222,8 +3366,12 @@ function removeFixed(id){
 document.querySelectorAll('.tab-btn').forEach(btn=>{
   if(btn.classList.contains('disabled')) return;
   btn.addEventListener('click', ()=>{
-    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b=>{
+      b.classList.remove('active');
+      b.setAttribute('aria-selected', 'false');
+    });
     btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
     if(btn.dataset.tab === 'ledger') renderLedgerTab();
     else if(btn.dataset.tab === 'analysis') renderAnalysisTab();
     else if(btn.dataset.tab === 'lifeplan') renderLifeplanTab();
@@ -3231,8 +3379,35 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
 });
 
 /* =========================================================
+   アクセシビリティ：ラベルと入力欄の関連付け
+   -----------------------------------------------------------
+   <label> の直後に入力欄が並ぶ作りが多く、そのままでは読み上げソフトが
+   「この欄は何の入力か」を判断できない。画面が描き直されるたびに、
+   直後の入力欄と自動で結びつける。 */
+let autoFieldSeq = 0;
+let labelAssocScheduled = false;
+function associateLabels(){
+  labelAssocScheduled = false;
+  document.querySelectorAll('label:not([for])').forEach(lab=>{
+    if(lab.querySelector('input, select, textarea')) return;
+    const ctrl = lab.nextElementSibling;
+    if(!ctrl || !/^(INPUT|SELECT|TEXTAREA)$/.test(ctrl.tagName)) return;
+    if(!ctrl.id) ctrl.id = 'auto-field-' + (++autoFieldSeq);
+    lab.htmlFor = ctrl.id;
+  });
+}
+new MutationObserver(()=>{
+  if(!labelAssocScheduled){ labelAssocScheduled = true; requestAnimationFrame(associateLabels); }
+}).observe(document.body, { childList: true, subtree: true });
+
+/* =========================================================
    初期化
    ========================================================= */
+// オフラインでも起動できるよう、画面の本体を端末に保存しておく（sw.js。更新は常に最新を優先）。
+if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
+  navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service Worker の登録に失敗しました', err));
+}
+
 generateFixedEntries();
 dedupeFixedEntries();
 applyTheme();

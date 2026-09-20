@@ -55,6 +55,12 @@ function doPost(e) {
   var action = body.action;
   var payload = body.payload || {};
 
+  // 全件の読み出し。合言葉を URL（アクセスログに残りうる）ではなく本文で送れるよう、
+  // GET と同じ内容を POST でも返す。読むだけなのでロックは不要。
+  if (action === 'readAll') {
+    return jsonOutput_({ status: 'ok', entries: readEntries_(ss), state: readState_(ss) });
+  }
+
   // 夫婦の端末から同時に書き込まれても、シートの読み書きが混ざらないよう
   // 書き込みは1件ずつ順番に処理する（取れなかった場合は 'busy' を返し、
   // アプリ側があとで自動的に再送する）。
