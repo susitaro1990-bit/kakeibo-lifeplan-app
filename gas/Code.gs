@@ -55,21 +55,37 @@ function doPost(e) {
   var action = body.action;
   var payload = body.payload || {};
 
-  switch (action) {
-    case 'addEntry':
-      addEntry_(ss, payload);
-      break;
-    case 'updateEntry':
-      updateEntry_(ss, payload);
-      break;
-    case 'deleteEntry':
-      deleteEntry_(ss, payload.id);
-      break;
-    case 'setState':
-      setState_(ss, payload.key, payload.value);
-      break;
-    default:
-      return jsonOutput_({ status: 'error', error: 'unknown action: ' + action });
+  // 夫婦の端末から同時に書き込まれても、シートの読み書きが混ざらないよう
+  // 書き込みは1件ずつ順番に処理する（取れなかった場合は 'busy' を返し、
+  // アプリ側があとで自動的に再送する）。
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+  } catch (err) {
+    return jsonOutput_({ status: 'error', error: 'busy' });
+  }
+
+  try {
+    switch (action) {
+      case 'addEntry':
+        addEntry_(ss, payload);
+        break;
+      case 'updateEntry':
+        updateEntry_(ss, payload);
+        break;
+      case 'deleteEntry':
+        deleteEntry_(ss, payload.id);
+        break;
+      case 'setState':
+        setState_(ss, payload.key, payload.value);
+        break;
+      default:
+        return jsonOutput_({ status: 'error', error: 'unknown action: ' + action });
+    }
+  } catch (err) {
+    return jsonOutput_({ status: 'error', error: String(err) });
+  } finally {
+    lock.releaseLock();
   }
 
   return jsonOutput_({ status: 'ok' });
@@ -121,13 +137,17 @@ function entryRowValues_(entry) {
   ];
 }
 
+// 同じ id がすでにあれば何もしない（再送や、複数端末からの同じ固定費の
+// 自動入力が重なっても、二重に記録されないようにするため）。
 function addEntry_(ss, entry) {
   var sh = getEntriesSheet_(ss);
+  if (entry.id && findEntryRow_(sh, entry.id) !== -1) return;
   sh.appendRow(entryRowValues_(entry));
 }
 
 function findEntryRow_(sh, id) {
-  var ids = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 0), 1).getValues();
+  if (!id || sh.getLastRow() < 2) return -1; // データ行がまだ無い（空のシートに範囲指定するとエラーになる）
+  var ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
   for (var i = 0; i < ids.length; i++) {
     if (ids[i][0] === id) return i + 2; // 1行目はヘッダーなので+2
   }
@@ -144,10 +164,13 @@ function updateEntry_(ss, entry) {
   sh.getRange(row, 1, 1, ENTRY_HEADERS.length).setValues([entryRowValues_(entry)]);
 }
 
+// 同じ id の行が複数残っていても、すべて削除する。
 function deleteEntry_(ss, id) {
   var sh = getEntriesSheet_(ss);
-  var row = findEntryRow_(sh, id);
-  if (row !== -1) sh.deleteRow(row);
+  var row;
+  while ((row = findEntryRow_(sh, id)) !== -1) {
+    sh.deleteRow(row);
+  }
 }
 
 /* ---------- 設定類（Settings シート・キーバリュー） ---------- */

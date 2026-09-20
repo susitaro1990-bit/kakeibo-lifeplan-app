@@ -80,6 +80,11 @@
     box-shadow:var(--shadow);
     transition:background .15s, color .15s, border-color .15s;
   }
+  .icon-btn{position:relative;}
+  .icon-btn.has-pending::after{
+    content:'';position:absolute;top:3px;right:3px;width:9px;height:9px;border-radius:50%;
+    background:var(--expense);border:1.5px solid var(--card);
+  }
   .icon-btn svg{width:18px;height:18px;}
   .icon-btn:hover{background:var(--accent-dim);color:var(--accent);border-color:var(--accent);}
   .icon-btn.spinning svg{animation:icon-spin .8s linear infinite;}
@@ -639,36 +644,141 @@ let themeColors = loadJSON(THEME_KEY, DEFAULT_THEME_COLORS); // { self, spouse }
 let lifeplan = loadJSON(LIFEPLAN_KEY, defaultLifeplan());
 normalizeLifeplanBaseline(lifeplan); // 旧バージョンからの移行用
 
-/* ---- GAS 連携スタブ ----
-   CONFIG.gasUrl が空の間はローカル保存のみで動作し、
-   コンソールに送信予定の内容をログするだけの「疎通確認ダミー」。
-   実際の GAS Web App を作ったら gasUrl を設定するだけで
-   下の fetch が有効になる想定。 */
-async function syncToGAS(action, payload){
+/* ---- GAS 連携（送信キュー付き） ----
+   GAS Web App URL が空の間はローカル保存のみで動作する。
+   URL が設定されている場合、家計簿の追加・更新・削除と設定類の保存は
+   いったん端末の「送信キュー」に積み、順番に GAS へ送る。送れなかった分
+   （圏外・GAS が混み合っている等）は端末に残り、通信が戻ったときや
+   次回の同期時に自動で再送する。取得（pull）で入力が消えないよう、
+   取得結果には未送信の変更を重ねて反映する。 */
+const OUTBOX_KEY = 'kakeibo_outbox_v1';
+let outbox = loadJSON(OUTBOX_KEY, []); // [{ seq, action, payload }] 未送信の変更（古い順）
+let outboxSeq = outbox.reduce((m, o) => Math.max(m, o.seq || 0), 0);
+let inflightSeq = null; // 送信中の変更（まとめ直しの対象にしない）
+let flushPromise = null;
+let syncFailureNotified = false;
+let pullInFlight = false;
+let opsDuringPull = []; // 取得中に発生した変更（取得結果に重ねるため保持）
+
+function persistOutbox(){
+  saveJSON(OUTBOX_KEY, outbox);
+  updateSyncBadge();
+}
+
+function updateSyncBadge(){
+  const btn = document.getElementById('btnSyncNow');
+  if(!btn) return;
+  const n = outbox.length;
+  btn.classList.toggle('has-pending', n > 0);
+  btn.title = n > 0 ? `未送信の変更が${n}件あります（タップで再送して最新を取得）` : '最新のデータを取得';
+}
+
+function enqueueOutbox(action, payload){
+  if(action === 'setState'){
+    // 同じ設定の未送信分は最新の1件だけ残せばよい
+    outbox = outbox.filter(o => !(o.action === 'setState' && o.payload.key === payload.key && o.seq !== inflightSeq));
+  }
+  const op = { seq: ++outboxSeq, action, payload };
+  outbox.push(op);
+  if(pullInFlight) opsDuringPull.push(op);
+  persistOutbox();
+}
+
+function syncToGAS(action, payload){
   if(!config.gasUrl){
     console.log('[GAS dummy sync]', action, payload);
-    return { status:'ok', dummy:true };
+    return Promise.resolve({ status:'ok', dummy:true });
   }
-  try{
-    const res = await fetch(config.gasUrl, {
-      method:'POST',
-      headers:{ 'Content-Type':'text/plain' },
-      body: JSON.stringify({ action, payload, secret: config.gasSecret || '' })
+  enqueueOutbox(action, payload);
+  return flushOutbox();
+}
+
+function flushOutbox(){
+  if(!config.gasUrl || !outbox.length) return Promise.resolve(true);
+  if(flushPromise) return flushPromise;
+  flushPromise = doFlushOutbox().finally(()=>{ flushPromise = null; });
+  return flushPromise;
+}
+
+async function doFlushOutbox(){
+  while(outbox.length){
+    const op = outbox[0];
+    inflightSeq = op.seq;
+    let ok = false, reason = '';
+    try{
+      const res = await fetch(config.gasUrl, {
+        method:'POST',
+        headers:{ 'Content-Type':'text/plain' },
+        body: JSON.stringify({ action: op.action, payload: op.payload, secret: config.gasSecret || '' })
+      });
+      const data = await res.json().catch(()=>null);
+      ok = !!data && data.status === 'ok';
+      if(!ok) reason = (data && data.error) ? data.error : 'invalid response';
+    }catch(e){
+      reason = String(e);
+    }
+    inflightSeq = null;
+    if(!ok){ reportSyncFailure(reason); return false; }
+    outbox = outbox.filter(o => o.seq !== op.seq);
+    persistOutbox();
+  }
+  syncFailureNotified = false;
+  return true;
+}
+
+function reportSyncFailure(reason){
+  console.error('GAS sync failed:', reason);
+  if(syncFailureNotified) return;
+  syncFailureNotified = true;
+  showToast(reason === 'unauthorized'
+    ? '合言葉が違うため同期できません（設定を確認してください）'
+    : '同期できませんでした。この端末には保存済みで、つながったら自動で再送します');
+}
+
+window.addEventListener('online', ()=>{ flushOutbox(); });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) flushOutbox(); });
+setInterval(()=>{ if(outbox.length) flushOutbox(); }, 60000);
+
+function uniqueById(list){
+  const seen = new Set();
+  return list.filter(e=>{
+    if(seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  });
+}
+
+/* 取得した一覧に、まだ送れていない追加・更新・削除を重ねる。 */
+function applyPendingEntryOps(list, ops){
+  const byId = new Map(list.map(e => [e.id, e]));
+  ops.forEach(op=>{
+    if(op.action === 'addEntry' || op.action === 'updateEntry') byId.set(op.payload.id, { ...op.payload });
+    else if(op.action === 'deleteEntry') byId.delete(op.payload.id);
+  });
+  return Array.from(byId.values());
+}
+
+function mergeFixedLogs(a, b){
+  const out = {};
+  [a, b].forEach(src=>{
+    Object.keys(src || {}).forEach(id=>{
+      out[id] = Array.from(new Set([...(out[id] || []), ...(src[id] || [])])).sort();
     });
-    return await res.json().catch(()=>({status:'ok'}));
-  }catch(e){
-    console.error('GAS sync failed', e);
-    showToast('GAS同期に失敗しました（ローカルには保存済み）');
-    return { status:'error', error:String(e) };
-  }
+  });
+  return out;
+}
+function countFixedLogMonths(l){
+  return Object.keys(l || {}).reduce((s, id) => s + (l[id] || []).length, 0);
 }
 
 /* ---- 起動時にスプレッドシートから取得 ----
    GAS Web App URL が設定されていれば、起動時に一度だけ GET して
    スプレッドシート側の最新内容（家計簿の全件＋設定類）を取り込む。
    スプレッドシートを「正」とみなし、ローカルの値を上書きする
-   （＝配偶者の端末で行われた変更もここで反映される）。
+   （＝配偶者の端末で行われた変更もここで反映される）。ただし、
+   まだ送れていない自分の変更は、取得結果に重ねて残す。
    取得に失敗しても致命的にはせず、ローカルのデータで動作を続ける。
+   成功したら true、失敗したら false を返す。
 
    ヘッダーの更新ボタンと、ライフプラン設定を開く直前の取得が
    ほぼ同時に呼ばれることがある。別々に fetch すると通信中に
@@ -677,30 +787,44 @@ async function syncToGAS(action, payload){
    共有して待つようにする。 */
 let gasPullPromise = null;
 function pullFromGAS(){
-  if(!config.gasUrl) return Promise.resolve();
+  if(!config.gasUrl) return Promise.resolve(true);
   if(gasPullPromise) return gasPullPromise;
   gasPullPromise = pullFromGASOnce().finally(()=>{ gasPullPromise = null; });
   return gasPullPromise;
 }
 async function pullFromGASOnce(){
   try{
+    await flushOutbox(); // まず未送信分を送る（送れなければ、下で取得結果に重ねて残す）
+    pullInFlight = true;
+    opsDuringPull = [];
     const url = config.gasUrl + '?secret=' + encodeURIComponent(config.gasSecret || '');
     const res = await fetch(url, { method:'GET' });
     const data = await res.json();
+    if(!data || data.status !== 'ok') throw new Error((data && data.error) || 'invalid response');
+
+    // 取得中に発生した変更も含めて、まだ取得結果に反映されていない変更を集める
+    const seen = new Set();
+    const pendingOps = [...outbox, ...opsDuringPull]
+      .filter(o => !seen.has(o.seq) && seen.add(o.seq))
+      .sort((a, b) => a.seq - b.seq);
+    const pendingKeys = new Set(pendingOps.filter(o => o.action === 'setState').map(o => o.payload.key));
+
     if(Array.isArray(data.entries)){
       // GAS/スプレッドシート側で日付が Date 型に自動変換され、
       // ISO日時（例: 2026-09-06T15:00:00.000Z）のまま返ってくることがあるため、
       // 念のためアプリ側でも "YYYY-MM-DD" に正規化しておく。
-      entries = data.entries.map(e=>({
+      const fromServer = uniqueById(data.entries.map(e=>({
         ...e,
         amount: Number(e.amount) || 0,
         date: normalizeDateString(e.date),
-      }));
+      })));
+      entries = applyPendingEntryOps(fromServer, pendingOps);
       saveJSON(STORAGE_KEY, entries);
     }
     const st = data.state || {};
     const applyState = (key, setter) => {
       if(st[key] == null) return;
+      if(pendingKeys.has(key)) return; // この端末で保存した最新の内容が未送信のときは、それを優先する
       try{ setter(JSON.parse(st[key])); }catch(err){ console.error('failed to parse GAS state for', key, err); }
     };
     applyState('categories', v=>{
@@ -718,20 +842,37 @@ async function pullFromGASOnce(){
       if(migrated !== v) syncState('people', people);
     });
     applyState('fixedCosts', v=>{ fixedCosts = v; saveJSON(FIXED_KEY, fixedCosts); });
-    applyState('fixedLog', v=>{ fixedLog = v; saveJSON(FIXED_LOG_KEY, fixedLog); });
+    // 固定費の生成済み月は「増える一方の記録」なので、上書きではなく両方を合わせる
+    if(st.fixedLog != null){
+      try{
+        const server = JSON.parse(st.fixedLog);
+        fixedLog = mergeFixedLogs(fixedLog, server);
+        saveJSON(FIXED_LOG_KEY, fixedLog);
+        if(countFixedLogMonths(fixedLog) > countFixedLogMonths(server)) syncState('fixedLog', fixedLog);
+      }catch(err){ console.error('failed to parse GAS state for fixedLog', err); }
+    }
     applyState('themeColors', v=>{ themeColors = v; saveJSON(THEME_KEY, themeColors); });
     applyState('lifeplan', v=>{ lifeplan = v; normalizeLifeplanBaseline(lifeplan); saveJSON(LIFEPLAN_KEY, lifeplan); });
 
     generateFixedEntries();
+    dedupeFixedEntries();
     applyTheme();
     const activeTabBtn = document.querySelector('.tab-btn.active');
     const activeTab = activeTabBtn ? activeTabBtn.dataset.tab : 'ledger';
     if(activeTab === 'analysis') renderAnalysisTab();
     else if(activeTab === 'lifeplan') renderLifeplanTab();
     else renderAll();
-    showToast('スプレッドシートと同期しました');
+    syncFailureNotified = false;
+    showToast(outbox.length
+      ? `同期しました（未送信の変更が${outbox.length}件残っています）`
+      : 'スプレッドシートと同期しました');
+    return true;
   }catch(e){
     console.error('GAS pull failed', e);
+    return false;
+  }finally{
+    pullInFlight = false;
+    opsDuringPull = [];
   }
 }
 
@@ -802,24 +943,61 @@ function generateFixedEntries(){
     while(m <= curMonth && guard < 1200){
       guard++;
       if(!fixedLog[f.id].includes(m)){
-        const [y, mm] = m.split('-').map(Number);
-        const lastDay = new Date(y, mm, 0).getDate();
-        const useDay = Math.min(parseInt(f.dayOfMonth) || 1, lastDay);
-        const date = `${y}-${String(mm).padStart(2,'0')}-${String(useDay).padStart(2,'0')}`;
-        const entry = {
-          id: uid(), date, person: f.person, type: f.type, category: f.category,
-          amount: f.amount, memo: f.memo || '', createdAt: new Date().toISOString(),
-          fixedId: f.id
-        };
-        entries.push(entry);
+        // IDを「固定費ID＋月」で決めておく。夫婦の端末が同じ月に同時に自動入力しても、
+        // 同じ明細として扱われ、二重に記録されない。
+        const entryId = `fx_${f.id}_${m}`;
+        const alreadyThere = entries.some(e => e.id === entryId || (e.fixedId === f.id && monthKey(e.date) === m));
+        if(!alreadyThere){
+          const [y, mm] = m.split('-').map(Number);
+          const lastDay = new Date(y, mm, 0).getDate();
+          const useDay = Math.min(parseInt(f.dayOfMonth) || 1, lastDay);
+          const date = `${y}-${String(mm).padStart(2,'0')}-${String(useDay).padStart(2,'0')}`;
+          const entry = {
+            id: entryId, date, person: f.person, type: f.type, category: f.category,
+            amount: f.amount, memo: f.memo || '', createdAt: new Date().toISOString(),
+            fixedId: f.id
+          };
+          entries.push(entry);
+          syncToGAS('addEntry', entry);
+        }
         fixedLog[f.id].push(m);
         changed = true;
-        syncToGAS('addEntry', entry);
       }
       m = nextMonth(m);
     }
   });
   if(changed){ persistEntries(); persistFixedLog(); }
+}
+
+/* 以前の版で、同じ固定費・同じ月の明細が二重に作られてしまった分を片付ける。
+   固定費から自動生成された明細（fixedId あり）だけが対象で、日付・金額・費目・
+   入力者がすべて同じものだけを削除する（どれを残すかは全端末で同じ基準で決める）。 */
+function dedupeFixedEntries(){
+  const groups = new Map();
+  entries.forEach(e=>{
+    if(!e.fixedId) return;
+    const key = e.fixedId + '|' + monthKey(e.date);
+    if(!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
+  });
+  const removeIds = [];
+  groups.forEach(list=>{
+    if(list.length < 2) return;
+    list.sort((a, b) =>
+      (a.id.startsWith('fx_') ? 0 : 1) - (b.id.startsWith('fx_') ? 0 : 1)
+      || String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+      || a.id.localeCompare(b.id));
+    const keep = list[0];
+    list.slice(1).forEach(e=>{
+      if(e.date === keep.date && e.amount === keep.amount && e.category === keep.category
+         && e.type === keep.type && e.person === keep.person) removeIds.push(e.id);
+    });
+  });
+  if(!removeIds.length) return;
+  const drop = new Set(removeIds);
+  entries = entries.filter(e => !drop.has(e.id));
+  persistEntries();
+  removeIds.forEach(id => syncToGAS('deleteEntry', { id }));
 }
 
 /* =========================================================
@@ -1727,7 +1905,8 @@ async function openLifeplanSettings(){
   const btn = document.getElementById('btnLifeplanSettings');
   if(btn){ btn.disabled = true; btn.textContent = '読み込み中…'; }
   if(config.gasUrl){
-    await pullFromGAS();
+    const ok = await pullFromGAS();
+    if(ok === false) showToast('最新の内容を取得できなかったため、この端末の内容で開きます。保存前に更新ボタンで同期することをおすすめします');
   }
   lifeplanView = 'settings';
   renderLifeplanTab();
@@ -2708,7 +2887,8 @@ document.getElementById('btnSyncNow').addEventListener('click', async ()=>{
   btn.classList.add('spinning');
   btn.disabled = true;
   try{
-    await pullFromGAS();
+    const ok = await pullFromGAS();
+    if(ok === false) showToast('同期できませんでした。通信状況や連携の設定を確認してください');
   } finally {
     btn.classList.remove('spinning');
     btn.disabled = false;
@@ -2866,7 +3046,9 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
    初期化
    ========================================================= */
 generateFixedEntries();
+dedupeFixedEntries();
 applyTheme();
+updateSyncBadge();
 if(localStorage.getItem('kakeibo_current_person') === null){
   showPersonSetup();
 } else {
