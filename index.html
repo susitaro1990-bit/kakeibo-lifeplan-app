@@ -1262,7 +1262,8 @@ const PIE_COLORS = {
   '食費':'#3f7a5c','光熱・水道':'#2f6f8f','家具・日用品':'#7a5fae','被服・美容':'#c2578b',
   '保健医療・保険':'#c1553e','交通・通信':'#a9762c','教養娯楽':'#5f7a3f','交際費':'#2f8f8f',
   'お小遣い・子供':'#d08a3c','住居':'#6b7770','教育':'#4f5fae','介護・仕送り':'#8a5a44',
-  '老後の生活費':'#3a6e8a','その他':'#a3aca7'
+  '老後の生活費':'#3a6e8a','その他':'#a3aca7',
+  '積立投資':'#1f5f8b','貯金（残り）':'#8fc3a6','貯金・積立（残り）':'#8fc3a6'
 };
 const LEDGER_TO_PIE_GROUP = {
   '食費':'食費','日用品費':'家具・日用品','被服及び履物費':'被服・美容','美容費':'被服・美容',
@@ -1270,7 +1271,7 @@ const LEDGER_TO_PIE_GROUP = {
   '水道代':'光熱・水道','医療費':'保健医療・保険','保険料':'保健医療・保険','教育費':'教育','その他':'その他'
 };
 
-function renderDonut(groups){
+function renderDonut(groups, centerLabel){
   const items = Object.keys(groups).map(k=>({ name:k, value:groups[k] })).filter(x=>x.value>0).sort((a,b)=>b.value-a.value);
   const total = items.reduce((s,x)=>s+x.value, 0);
   if(!total) return '<div class="empty-note">支出データがありません</div>';
@@ -1295,7 +1296,7 @@ function renderDonut(groups){
     <div class="pie-wrap">
       <svg viewBox="0 0 160 160" class="pie-svg" role="img" aria-label="支出の内訳">
         ${paths}
-        <text x="${cx}" y="${cy-3}" text-anchor="middle" font-size="9" fill="var(--text-dim)">支出合計</text>
+        <text x="${cx}" y="${cy-3}" text-anchor="middle" font-size="9" fill="var(--text-dim)">${centerLabel || '支出合計'}</text>
         <text x="${cx}" y="${cy+11}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text)">${fmtYen(total)}</text>
       </svg>
       <div class="pie-legend">${legend}</div>
@@ -1318,13 +1319,17 @@ function renderPieComparisonCards(){
     const groups = {};
     Object.keys(planRow.expenseGroups).forEach(k=>{ groups[k] = planRow.expenseGroups[k] / 12; });
     const inc = planRow.income / 12, exp = planRow.expense / 12, inv = planRow.investContribution / 12;
+    const remain = inc - exp - inv;
+    if(inv > 0) groups['積立投資'] = inv;
+    if(remain > 0) groups['貯金（残り）'] = remain;
     planBody = `
       <div class="pie-summary">
         <span>収入 <b class="income">${fmtYen(inc)}</b></span>
         <span>支出 <b class="expense">${fmtYen(exp)}</b></span>
         <span>積立投資 <b>${fmtYen(inv)}</b></span>
+        <span>${remain >= 0 ? '貯金（残り）' : '不足'} <b class="${remain >= 0 ? '' : 'expense'}">${fmtYen(Math.abs(remain))}</b></span>
       </div>
-      ${renderDonut(groups)}
+      ${renderDonut(groups, remain >= 0 ? '収入' : '支出＋積立')}
       <div class="sync-status">${year}年のライフプランの年額を12で割った月平均です（年が変わると、その年の計画に切り替わります）。</div>`;
   }
 
@@ -1337,13 +1342,15 @@ function renderPieComparisonCards(){
     const g = LEDGER_TO_PIE_GROUP[e.category] || 'その他';
     groups[g] = (groups[g]||0) + e.amount;
   });
+  const actualRemain = inc - exp;
+  if(actualRemain > 0) groups['貯金・積立（残り）'] = actualRemain;
   const actualBody = `
     <div class="pie-summary">
       <span>収入 <b class="income">${fmtYen(inc)}</b></span>
       <span>支出 <b class="expense">${fmtYen(exp)}</b></span>
-      <span>収支 <b>${fmtYen(inc-exp)}</b></span>
+      <span>${actualRemain >= 0 ? '貯金・積立（残り）' : '不足'} <b class="${actualRemain >= 0 ? '' : 'expense'}">${fmtYen(Math.abs(actualRemain))}</b></span>
     </div>
-    ${renderDonut(groups)}
+    ${renderDonut(groups, actualRemain >= 0 ? '収入' : '支出合計')}
     <div class="sync-status">家計簿に記録した${monthLabel(mk)}の実績です（ホスト・ゲスト合算）。</div>`;
 
   return `
