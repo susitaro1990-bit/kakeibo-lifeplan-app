@@ -313,6 +313,16 @@
   }
   .preset-btn:hover{background:var(--accent-dim);color:var(--accent);border-color:var(--accent);}
 
+  .pie-summary{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-dim);margin-bottom:10px;flex-wrap:wrap;}
+  .pie-summary b{font-size:13.5px;color:var(--text);}
+  .pie-summary b.income{color:var(--income);} .pie-summary b.expense{color:var(--expense);}
+  .pie-wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .pie-svg{width:160px;height:160px;flex-shrink:0;margin:0 auto;}
+  .pie-legend{flex:1;min-width:190px;}
+  .pie-legend-row{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 0;}
+  .pie-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
+  .pie-name{flex:1;font-weight:600;}
+  .pie-val{font-weight:700;} .pie-pct{margin-left:6px;font-size:11px;font-weight:600;color:var(--text-dim);}
   .analysis-row{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--border);gap:10px;}
   .analysis-row:last-child{border-bottom:none;}
   .analysis-cat{font-weight:700;font-size:13px;flex-shrink:0;}
@@ -811,6 +821,7 @@ const state = {
   analysisStart: null, // 分析タブ: 期間の開始月（YYYY-MM）
   analysisEnd: null, // 分析タブ: 期間の終了月（YYYY-MM）
   analysisPerson: 'combined', // 分析タブ: 'self' | 'spouse' | 'combined'
+  pieMonth: null, // 分析タブ: 計画と実績の円グラフで見る月（YYYY-MM）
 };
 
 function setCurrentPerson(p){
@@ -1246,6 +1257,105 @@ function setAnalysisPreset(preset){
   renderAnalysisTab();
 }
 
+/* ---- 計画（ライフプラン）と実績（家計簿）の月別円グラフ ---- */
+const PIE_COLORS = {
+  '食費':'#3f7a5c','光熱・水道':'#2f6f8f','家具・日用品':'#7a5fae','被服・美容':'#c2578b',
+  '保健医療・保険':'#c1553e','交通・通信':'#a9762c','教養娯楽':'#5f7a3f','交際費':'#2f8f8f',
+  'お小遣い・子供':'#d08a3c','住居':'#6b7770','教育':'#4f5fae','介護・仕送り':'#8a5a44',
+  '老後の生活費':'#3a6e8a','その他':'#a3aca7'
+};
+const LEDGER_TO_PIE_GROUP = {
+  '食費':'食費','日用品費':'家具・日用品','被服及び履物費':'被服・美容','美容費':'被服・美容',
+  '娯楽費':'教養娯楽','交通費':'交通・通信','住居費':'住居','電気代':'光熱・水道','ガス代':'光熱・水道',
+  '水道代':'光熱・水道','医療費':'保健医療・保険','保険料':'保健医療・保険','教育費':'教育','その他':'その他'
+};
+
+function renderDonut(groups){
+  const items = Object.keys(groups).map(k=>({ name:k, value:groups[k] })).filter(x=>x.value>0).sort((a,b)=>b.value-a.value);
+  const total = items.reduce((s,x)=>s+x.value, 0);
+  if(!total) return '<div class="empty-note">支出データがありません</div>';
+  const R = 70, r = 42, cx = 80, cy = 80;
+  let angle = -Math.PI/2;
+  const paths = items.map(x=>{
+    const color = PIE_COLORS[x.name] || '#a3aca7';
+    if(items.length === 1) return `<circle cx="${cx}" cy="${cy}" r="${(R+r)/2}" fill="none" stroke="${color}" stroke-width="${R-r}"/>`;
+    const a0 = angle, a1 = angle + (x.value/total) * Math.PI*2;
+    angle = a1;
+    const large = (a1 - a0) > Math.PI ? 1 : 0;
+    const pt = (rad, a) => `${(cx + rad*Math.cos(a)).toFixed(2)},${(cy + rad*Math.sin(a)).toFixed(2)}`;
+    return `<path d="M${pt(R,a0)} A${R},${R} 0 ${large} 1 ${pt(R,a1)} L${pt(r,a1)} A${r},${r} 0 ${large} 0 ${pt(r,a0)} Z" fill="${color}"/>`;
+  }).join('');
+  const legend = items.map(x=>`
+    <div class="pie-legend-row">
+      <span class="pie-dot" style="background:${PIE_COLORS[x.name] || '#a3aca7'}"></span>
+      <span class="pie-name">${escapeHtml(x.name)}</span>
+      <span class="pie-val">${fmtYen(x.value)}<span class="pie-pct">${(x.value/total*100).toFixed(1)}%</span></span>
+    </div>`).join('');
+  return `
+    <div class="pie-wrap">
+      <svg viewBox="0 0 160 160" class="pie-svg" role="img" aria-label="支出の内訳">
+        ${paths}
+        <text x="${cx}" y="${cy-3}" text-anchor="middle" font-size="9" fill="var(--text-dim)">支出合計</text>
+        <text x="${cx}" y="${cy+11}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text)">${fmtYen(total)}</text>
+      </svg>
+      <div class="pie-legend">${legend}</div>
+    </div>`;
+}
+
+function renderPieComparisonCards(){
+  if(!state.pieMonth) state.pieMonth = todayStr().slice(0,7);
+  const mk = state.pieMonth;
+  const year = parseInt(mk.slice(0,4), 10);
+
+  const planRows = computeLifePlanProjection();
+  const planRow = planRows ? planRows.find(r => r.year === year) : null;
+  let planBody;
+  if(!planRows){
+    planBody = '<div class="empty-note">ライフプランが未設定です。ライフプランタブで設定すると、ここに月あたりの計画が表示されます。</div>';
+  } else if(!planRow){
+    planBody = `<div class="empty-note">${year}年はライフプランの計画期間外です。</div>`;
+  } else {
+    const groups = {};
+    Object.keys(planRow.expenseGroups).forEach(k=>{ groups[k] = planRow.expenseGroups[k] / 12; });
+    const inc = planRow.income / 12, exp = planRow.expense / 12, inv = planRow.investContribution / 12;
+    planBody = `
+      <div class="pie-summary">
+        <span>収入 <b class="income">${fmtYen(inc)}</b></span>
+        <span>支出 <b class="expense">${fmtYen(exp)}</b></span>
+        <span>積立投資 <b>${fmtYen(inv)}</b></span>
+      </div>
+      ${renderDonut(groups)}
+      <div class="sync-status">${year}年のライフプランの年額を12で割った月平均です（年が変わると、その年の計画に切り替わります）。</div>`;
+  }
+
+  const groups = {};
+  let inc = 0, exp = 0;
+  entries.forEach(e=>{
+    if(monthKey(e.date) !== mk) return;
+    if(e.type === 'income'){ inc += e.amount; return; }
+    exp += e.amount;
+    const g = LEDGER_TO_PIE_GROUP[e.category] || 'その他';
+    groups[g] = (groups[g]||0) + e.amount;
+  });
+  const actualBody = `
+    <div class="pie-summary">
+      <span>収入 <b class="income">${fmtYen(inc)}</b></span>
+      <span>支出 <b class="expense">${fmtYen(exp)}</b></span>
+      <span>収支 <b>${fmtYen(inc-exp)}</b></span>
+    </div>
+    ${renderDonut(groups)}
+    <div class="sync-status">家計簿に記録した${monthLabel(mk)}の実績です（ホスト・ゲスト合算）。</div>`;
+
+  return `
+    <div class="card">
+      <h2>計画と実績の比較（月別）</h2>
+      <label>比較する月</label>
+      <input type="month" id="pieMonthInput" value="${mk}">
+    </div>
+    <div class="card"><h2>計画（ライフプラン）${monthLabel(mk)}</h2>${planBody}</div>
+    <div class="card"><h2>実績（家計簿）${monthLabel(mk)}</h2>${actualBody}</div>`;
+}
+
 function renderAnalysisTab(){
   const main = document.getElementById('mainArea');
   if(!state.analysisStart || !state.analysisEnd){
@@ -1316,7 +1426,12 @@ function renderAnalysisTab(){
       <h2>収入の内訳（区分別の月平均）</h2>
       <div>${incomeHtml}</div>
     </div>
+
+    ${renderPieComparisonCards()}
   `;
+  document.getElementById('pieMonthInput').onchange = (e)=>{
+    if(e.target.value){ state.pieMonth = e.target.value; renderAnalysisTab(); }
+  };
 
   document.querySelectorAll('.preset-btn').forEach(btn=>{
     btn.onclick = ()=> setAnalysisPreset(btn.dataset.preset);
@@ -1517,6 +1632,33 @@ function computeLifePlanProjection(){
     const netCashFlow = income - totalExpense - investContribution;
     cash += netCashFlow;
 
+    // 円グラフ用の支出内訳（年額・インフレ反映済み）。家計簿の費目と比べやすい区分にまとめる。
+    const expenseGroups = {};
+    const addGroup = (k, v) => { if(v > 0) expenseGroups[k] = (expenseGroups[k]||0) + v; };
+    const gf = inflationFactor;
+    if(isRetired){
+      addGroup('老後の生活費', lifeplan.retirement.livingCostAnnual * gf);
+    } else {
+      const nKids = activeChildrenCount(year);
+      addGroup('食費', (ex.foodMonthly||0) * 12 * gf);
+      addGroup('光熱・水道', (ex.utilitiesMonthly||0) * 12 * gf);
+      addGroup('家具・日用品', (ex.furnitureMonthly||0) * 12 * gf);
+      addGroup('被服・美容', (ex.clothingMonthly||0) * 12 * gf);
+      addGroup('交通・通信', ((ex.transportMonthly||0) + (ex.communicationMonthly||0) + (ex.carLoanParkingMonthly||0)) * 12 * gf);
+      addGroup('教養娯楽', ((ex.hobbyMonthly||0) * 12 + (ex.travelAnnual||0)) * gf);
+      addGroup('交際費', (ex.socialMonthly||0) * 12 * gf);
+      addGroup('お小遣い・子供', ((ex.selfAllowance||0) + (ex.spouseAllowance||0) + nKids * ((ex.childAllowancePerChild||0) + (ex.childLivingCostPerChild||0))) * 12 * gf);
+      addGroup('その他', (ex.contingencyMonthly||0) * 12 * gf);
+      addGroup('保健医療・保険', (ex.medicalMonthly||0) * 12 * gf);
+    }
+    addGroup('保健医療・保険', insuranceCost);
+    addGroup('交通・通信', carCost);
+    addGroup('住居', mortgageCost);
+    addGroup('教育', eduCost);
+    addGroup('介護・仕送り', parentCareCost + remittanceCost);
+    addGroup('交際費', ceremonyCost);
+    addGroup('その他', eventCost);
+
     // 貯金が下限（生活防衛資金）を下回ったら、その分だけ積立NISAから
     // 取り崩して補う。貯金がマイナスのまま資産だけ増え続けるのは
     // 非現実的なため（積立NISAの残高が足りない場合はそこまでの取り崩しになる）。
@@ -1543,7 +1685,7 @@ function computeLifePlanProjection(){
     // （不動産純資産は realEstateNet として別途保持し、参考値として扱う）。
     const totalAssets = cash + investTotals.nisa_tsumitate + investTotals.nisa_growth + investTotals.ideco + investTotals.taxable + investTotals.child_nisa;
 
-    rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired, tsumitateWithdrawal, belowReserve });
+    rows.push({ year, age, income, expense: totalExpense, netCashFlow, cash, invest: investTotals, realEstateNet, totalAssets, mortgageBalance, isRetired, tsumitateWithdrawal, belowReserve, expenseGroups, investContribution });
   }
   return rows;
 }
